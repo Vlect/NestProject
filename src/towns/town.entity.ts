@@ -1,21 +1,28 @@
+import { Departments } from 'src/departments/department.entity';
 import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
+  OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 
 @Entity()
-export class Departments {
+export class Towns {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
-  cod_dane: number;
+  @OneToOne(() => Departments)
+  @JoinColumn()
+  department_id: number;
 
   @Column()
-  name: string;
+  zone_id: number;
+
+  @Column()
+  town_type_id: number;
 
   @CreateDateColumn({ type: 'timestamp' })
   created_at: Date;
