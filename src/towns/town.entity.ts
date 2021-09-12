@@ -1,9 +1,11 @@
 import { Departments } from 'src/departments/department.entity';
+import { Headquarters } from 'src/headquarters/headquarter.entity';
 import {
   Column,
   CreateDateColumn,
   Entity,
   JoinColumn,
+  OneToMany,
   OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
@@ -14,8 +16,10 @@ export class Towns {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @OneToOne(() => Departments)
-  @JoinColumn()
+  @Column()
+  name: string;
+
+  @Column()
   department_id: number;
 
   @Column()
@@ -29,4 +33,7 @@ export class Towns {
 
   @UpdateDateColumn({ type: 'timestamp' })
   updated_at: Date;
+
+  @OneToMany(() => Headquarters, headquarter => headquarter.town)
+  headquarter: Headquarters[];
 }

@@ -7,7 +7,12 @@ export class DashBoardController {
   constructor(private dashBoardService: DashBoardService) {}
 
   @Get('/:id')
-  async getDepartmentById(@Param('id') id: string) {
-    return this.dashBoardService.getDepartmentById(id);
+  async getDashboardDataByDepartment(@Param('id') id: string) {
+    return this.dashBoardService.getDashboardDataByDepartment(id);
+  }
+
+  @Get('/v2/:id')
+  async getDashboardDataByDepartmentV2(@Param('id') id: string) {
+    return this.dashBoardService.getDashboardDataByDepartmentV2(id);
   }
 }
