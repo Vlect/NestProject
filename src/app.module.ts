@@ -25,7 +25,7 @@ const defaultOptions: TypeOrmModule = {
   host: 'localhost',
   port: 3306,
   username: 'root',
-  password: 'System.out23',
+  password: 'password',
 };
 const connectionTwo = 'talentumehs_valle_magico';
 

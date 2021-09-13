@@ -172,7 +172,87 @@ export class DashBoardService {
         GROUP BY (TSBUS.institutions_id), (TSBUS.headquarter_id), (TSBUS.style), (TSBUS.grade_id)
         ORDER BY (TSBUS.institutions_id), (TSBUS.headquarter_id), (TSBUS.style)
     `);
-
+    const departmentWithVocations = await this.manager.query(`
+      SELECT 
+      TOBUO.department_id as 'department_id',
+      TOBUO.department_name as 'department_name', 
+      TOBUO.town_id as 'town_id',
+      TOBUO.town_name as 'town_name',
+      TOBUO.institution_id as 'institution_id',
+      TOBUO.institution_name as 'institution_name', 
+      TOBUO.headquarter_id as 'headquarter_id',
+      TOBUO.headquarter_name as 'headquarter_name',
+      TOBUO.grade_id as 'grade_id',
+      VO.name as 'vocational_name',
+      ROUND(AVG(TOBUO.total_by_orientation/TVBU.total_by_user), 2) * 100 as 'vocational_average'
+      FROM (
+        SELECT
+          GU.grade_id as 'grade_id',
+          DP.id as 'department_id',
+          DP.name as 'department_name',
+          TW.id as 'town_id',
+          TW.name as 'town_name',
+          IT.id as 'institution_id',
+          IT.name as 'institution_name',
+          HQ.id as 'headquarter_id',
+          HQ.name as 'headquarter_name',
+          GU.id as 'game_user_id',
+          VO.id as 'vocational_orientation',
+          COUNT(GUIDS.id) as 'total_by_orientation'
+          FROM talentumehs_valle_open_location.departments DP
+          JOIN talentumehs_valle_open_location.towns TW
+            ON DP.id = TW.department_id
+          JOIN talentumehs_valle_open_location.headquarters HQ
+            ON TW.id = HQ.town_id
+          JOIN talentumehs_valle_open_location.institutions IT
+            ON HQ.institution_id = IT.id
+          JOIN talentumehs_valle_magico.game_users GU
+            ON GU.headquarter_id = HQ.id
+          JOIN talentumehs_valle_magico.game_user_records GUR
+            ON GUR.game_user_id = GU.id
+          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUIDS
+            ON GUIDS.game_user_record_id = GUR.id
+          JOIN talentumehs_valle_magico.vocationals_orientations VO
+            ON GUIDS.vocational_orientation_id = VO.id
+          WHERE DP.id = 1
+          GROUP BY (VO.id), (GU.id)
+      ) as TOBUO
+      JOIN (
+        SELECT
+          DP.id as 'department_id',
+          DP.name as 'department_name',
+          TW.id as 'town_id',
+          TW.name as 'town_name',
+          IT.id as 'institution_id',
+          IT.name as 'institution_name',
+          HQ.id as 'headquarter_id',
+          HQ.name as 'headquarter_name',
+          GU.id,
+          COUNT(GUIDS.id) as 'total_by_user'
+          FROM talentumehs_valle_open_location.departments DP
+          JOIN talentumehs_valle_open_location.towns TW
+            ON DP.id = TW.department_id
+          JOIN talentumehs_valle_open_location.headquarters HQ
+            ON TW.id = HQ.town_id
+          JOIN talentumehs_valle_open_location.institutions IT
+            ON HQ.institution_id = IT.id
+          JOIN talentumehs_valle_magico.game_users GU
+            ON GU.headquarter_id = HQ.id
+          JOIN talentumehs_valle_magico.game_user_records GUR
+            ON GUR.game_user_id = GU.id
+          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUIDS
+            ON GUIDS.game_user_record_id = GUR.id
+          JOIN talentumehs_valle_magico.vocationals_orientations VO
+            ON GUIDS.vocational_orientation_id = VO.id
+          WHERE DP.id = 1
+          GROUP BY (GU.id)
+      ) as TVBU
+        ON TOBUO.game_user_id = TVBU.id
+      RIGHT JOIN talentumehs_valle_magico.vocationals_orientations VO
+        ON TOBUO.vocational_orientation = VO.id
+      GROUP BY (VO.id), institution_id, headquarter_id
+      ORDER BY institution_id, headquarter_id, grade_id, (VO.name), (vocational_average)
+    `);
     for (const key in departmentWithAsignatures) {
       if (dataToReturn.municipios.length === 0) {
         dataToReturn.municipios.push({
@@ -455,6 +535,83 @@ export class DashBoardService {
       }
     }
 
+    for (const key in departmentWithVocations) {
+      const municipioIndex = dataToReturn.municipios
+        .map((municipio) => municipio.id)
+        .indexOf(departmentWithVocations[key].town_name);
+      if (municipioIndex != -1) {
+        const sedeIndex = dataToReturn.municipios[municipioIndex].sedes
+          .map((sede) => sede.id)
+          .indexOf(departmentWithVocations[key].headquarter_name);
+        if (sedeIndex != -1) {
+          const gradeIndex = dataToReturn.municipios[municipioIndex].sedes[
+            sedeIndex
+          ].grados
+            .map((grade) => grade.id)
+            .indexOf(
+              this.gradesFromNumberToString(
+                departmentWithVocations[key].grade_id,
+              ),
+            );
+
+          if (gradeIndex != -1) {
+            const notIntelligenceFound =
+              dataToReturn.municipios[municipioIndex].sedes[sedeIndex].grados[
+                gradeIndex
+              ].vocaciones
+                .map((inteligencia) => inteligencia.id)
+                .indexOf(departmentWithVocations[key].vocational_name) == -1;
+            if (notIntelligenceFound) {
+              dataToReturn.municipios[municipioIndex].sedes[sedeIndex].grados[
+                gradeIndex
+              ].vocaciones.push({
+                id: departmentWithVocations[key].vocational_name,
+                promedio: departmentWithVocations[key].vocational_average,
+              });
+            }
+          } else {
+            dataToReturn.municipios[municipioIndex].sedes[
+              sedeIndex
+            ].grados.push({
+              id: this.gradesFromNumberToString(
+                departmentWithVocations[key].grade_id,
+              ),
+              asignatura: [],
+              inteligencias: [],
+              estilos: [],
+              vocaciones: [
+                {
+                  id: departmentWithVocations[key].vocational_name,
+                  promedio: departmentWithVocations[key].vocational_average,
+                },
+              ],
+            });
+          }
+        } else {
+          dataToReturn.municipios[municipioIndex].sedes.push({
+            id: departmentWithVocations[key].headquarter_name,
+            institutcion: departmentWithVocations[key].institution_name,
+            grados: [
+              {
+                id: this.gradesFromNumberToString(
+                  departmentWithVocations[key].grade_id,
+                ),
+                asignatura: [],
+                inteligencias: [],
+                estilos: [],
+                vocaciones: [
+                  {
+                    id: departmentWithVocations[key].vocational_name,
+                    promedio: departmentWithVocations[key].vocational_average,
+                  },
+                ],
+              },
+            ],
+          });
+        }
+      }
+    }
+
     return dataToReturn;
   }
 
@@ -596,6 +753,88 @@ export class DashBoardService {
           ON TSBUS.style = S.id
         GROUP BY (TSBUS.institutions_id), (TSBUS.headquarter_id), (TSBUS.style), (TSBUS.grade_id)
         ORDER BY (TSBUS.institutions_id), (TSBUS.headquarter_id), (TSBUS.style)
+    `);
+
+    const institutionWithVocations = await this.manager.query(`
+      SELECT 
+      TOBUO.department_id as 'department_id',
+      TOBUO.department_name as 'department_name', 
+      TOBUO.town_id as 'town_id',
+      TOBUO.town_name as 'town_name',
+      TOBUO.institution_id as 'institution_id',
+      TOBUO.institution_name as 'institution_name', 
+      TOBUO.headquarter_id as 'headquarter_id',
+      TOBUO.headquarter_name as 'headquarter_name',
+      TOBUO.grade_id as 'grade_id',
+      VO.name as 'vocational_name',
+      ROUND(AVG(TOBUO.total_by_orientation/TVBU.total_by_user), 2) * 100 as 'vocational_average'
+      FROM (
+        SELECT
+          GU.grade_id as 'grade_id',
+          DP.id as 'department_id',
+          DP.name as 'department_name',
+          TW.id as 'town_id',
+          TW.name as 'town_name',
+          IT.id as 'institution_id',
+          IT.name as 'institution_name',
+          HQ.id as 'headquarter_id',
+          HQ.name as 'headquarter_name',
+          GU.id as 'game_user_id',
+          VO.id as 'vocational_orientation',
+          COUNT(GUIDS.id) as 'total_by_orientation'
+          FROM talentumehs_valle_open_location.departments DP
+          JOIN talentumehs_valle_open_location.towns TW
+            ON DP.id = TW.department_id
+          JOIN talentumehs_valle_open_location.headquarters HQ
+            ON TW.id = HQ.town_id
+          JOIN talentumehs_valle_open_location.institutions IT
+            ON HQ.institution_id = IT.id
+          JOIN talentumehs_valle_magico.game_users GU
+            ON GU.headquarter_id = HQ.id
+          JOIN talentumehs_valle_magico.game_user_records GUR
+            ON GUR.game_user_id = GU.id
+          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUIDS
+            ON GUIDS.game_user_record_id = GUR.id
+          JOIN talentumehs_valle_magico.vocationals_orientations VO
+            ON GUIDS.vocational_orientation_id = VO.id
+          WHERE IT.id = ${id}
+          GROUP BY (VO.id), (GU.id)
+      ) as TOBUO
+      JOIN (
+        SELECT
+          DP.id as 'department_id',
+          DP.name as 'department_name',
+          TW.id as 'town_id',
+          TW.name as 'town_name',
+          IT.id as 'institution_id',
+          IT.name as 'institution_name',
+          HQ.id as 'headquarter_id',
+          HQ.name as 'headquarter_name',
+          GU.id,
+          COUNT(GUIDS.id) as 'total_by_user'
+          FROM talentumehs_valle_open_location.departments DP
+          JOIN talentumehs_valle_open_location.towns TW
+            ON DP.id = TW.department_id
+          JOIN talentumehs_valle_open_location.headquarters HQ
+            ON TW.id = HQ.town_id
+          JOIN talentumehs_valle_open_location.institutions IT
+            ON HQ.institution_id = IT.id
+          JOIN talentumehs_valle_magico.game_users GU
+            ON GU.headquarter_id = HQ.id
+          JOIN talentumehs_valle_magico.game_user_records GUR
+            ON GUR.game_user_id = GU.id
+          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUIDS
+            ON GUIDS.game_user_record_id = GUR.id
+          JOIN talentumehs_valle_magico.vocationals_orientations VO
+            ON GUIDS.vocational_orientation_id = VO.id
+          WHERE IT.id = ${id}
+          GROUP BY (GU.id)
+      ) as TVBU
+        ON TOBUO.game_user_id = TVBU.id
+      RIGHT JOIN talentumehs_valle_magico.vocationals_orientations VO
+        ON TOBUO.vocational_orientation = VO.id
+      GROUP BY (VO.id), institution_id, headquarter_id
+      ORDER BY institution_id, headquarter_id, grade_id, (VO.name), (vocational_average)
     `);
 
     for (const key in institutionWithAsignatures) {
@@ -824,6 +1063,74 @@ export class DashBoardService {
       }
     }
 
+    for (const key in institutionWithVocations) {
+      const sedeIndex = dataToReturn.municipios[0].sedes
+        .map((sede) => sede.id)
+        .indexOf(institutionWithVocations[key].headquarter_name);
+      if (sedeIndex != -1) {
+        const gradeIndex = dataToReturn.municipios[0].sedes[sedeIndex].grados
+          .map((grade) => grade.id)
+          .indexOf(
+            this.gradesFromNumberToString(
+              institutionWithVocations[key].grade_id,
+            ),
+          );
+
+        if (gradeIndex != -1) {
+          const notIntelligenceFound =
+            dataToReturn.municipios[0].sedes[sedeIndex].grados[
+              gradeIndex
+            ].vocaciones
+              .map((inteligencia) => inteligencia.id)
+              .indexOf(institutionWithVocations[key].vocational_name) == -1;
+          if (notIntelligenceFound) {
+            dataToReturn.municipios[0].sedes[sedeIndex].grados[
+              gradeIndex
+            ].vocaciones.push({
+              id: institutionWithVocations[key].vocational_name,
+              promedio: institutionWithVocations[key].vocational_average,
+            });
+          }
+        } else {
+          dataToReturn.municipios[0].sedes[sedeIndex].grados.push({
+            id: this.gradesFromNumberToString(
+              institutionWithVocations[key].grade_id,
+            ),
+            asignatura: [],
+            inteligencias: [],
+            estilos: [],
+            vocaciones: [
+              {
+                id: institutionWithVocations[key].vocational_name,
+                promedio: institutionWithVocations[key].vocational_average,
+              },
+            ],
+          });
+        }
+      } else {
+        dataToReturn.municipios[0].sedes.push({
+          id: institutionWithVocations[key].headquarter_name,
+          institutcion: institutionWithVocations[key].institution_name,
+          grados: [
+            {
+              id: this.gradesFromNumberToString(
+                institutionWithVocations[key].grade_id,
+              ),
+              asignatura: [],
+              inteligencias: [],
+              estilos: [],
+              vocaciones: [
+                {
+                  id: institutionWithVocations[key].vocational_name,
+                  promedio: institutionWithVocations[key].vocational_average,
+                },
+              ],
+            },
+          ],
+        });
+      }
+    }
+
     return dataToReturn;
   }
 
@@ -965,6 +1272,88 @@ export class DashBoardService {
           ON TSBUS.style = S.id
         GROUP BY (TSBUS.institutions_id), (TSBUS.headquarter_id), (TSBUS.style), (TSBUS.grade_id)
         ORDER BY (TSBUS.institutions_id), (TSBUS.headquarter_id), (TSBUS.style)
+    `);
+
+    const headquarterWithVocations = await this.manager.query(`
+      SELECT 
+      TOBUO.department_id as 'department_id',
+      TOBUO.department_name as 'department_name', 
+      TOBUO.town_id as 'town_id',
+      TOBUO.town_name as 'town_name',
+      TOBUO.institution_id as 'institution_id',
+      TOBUO.institution_name as 'institution_name', 
+      TOBUO.headquarter_id as 'headquarter_id',
+      TOBUO.headquarter_name as 'headquarter_name',
+      TOBUO.grade_id as 'grade_id',
+      VO.name as 'vocational_name',
+      ROUND(AVG(TOBUO.total_by_orientation/TVBU.total_by_user), 2) * 100 as 'vocational_average'
+      FROM (
+        SELECT
+          GU.grade_id as 'grade_id',
+          DP.id as 'department_id',
+          DP.name as 'department_name',
+          TW.id as 'town_id',
+          TW.name as 'town_name',
+          IT.id as 'institution_id',
+          IT.name as 'institution_name',
+          HQ.id as 'headquarter_id',
+          HQ.name as 'headquarter_name',
+          GU.id as 'game_user_id',
+          VO.id as 'vocational_orientation',
+          COUNT(GUIDS.id) as 'total_by_orientation'
+          FROM talentumehs_valle_open_location.departments DP
+          JOIN talentumehs_valle_open_location.towns TW
+            ON DP.id = TW.department_id
+          JOIN talentumehs_valle_open_location.headquarters HQ
+            ON TW.id = HQ.town_id
+          JOIN talentumehs_valle_open_location.institutions IT
+            ON HQ.institution_id = IT.id
+          JOIN talentumehs_valle_magico.game_users GU
+            ON GU.headquarter_id = HQ.id
+          JOIN talentumehs_valle_magico.game_user_records GUR
+            ON GUR.game_user_id = GU.id
+          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUIDS
+            ON GUIDS.game_user_record_id = GUR.id
+          JOIN talentumehs_valle_magico.vocationals_orientations VO
+            ON GUIDS.vocational_orientation_id = VO.id
+          WHERE HQ.id = ${id}
+          GROUP BY (VO.id), (GU.id)
+      ) as TOBUO
+      JOIN (
+        SELECT
+          DP.id as 'department_id',
+          DP.name as 'department_name',
+          TW.id as 'town_id',
+          TW.name as 'town_name',
+          IT.id as 'institution_id',
+          IT.name as 'institution_name',
+          HQ.id as 'headquarter_id',
+          HQ.name as 'headquarter_name',
+          GU.id,
+          COUNT(GUIDS.id) as 'total_by_user'
+          FROM talentumehs_valle_open_location.departments DP
+          JOIN talentumehs_valle_open_location.towns TW
+            ON DP.id = TW.department_id
+          JOIN talentumehs_valle_open_location.headquarters HQ
+            ON TW.id = HQ.town_id
+          JOIN talentumehs_valle_open_location.institutions IT
+            ON HQ.institution_id = IT.id
+          JOIN talentumehs_valle_magico.game_users GU
+            ON GU.headquarter_id = HQ.id
+          JOIN talentumehs_valle_magico.game_user_records GUR
+            ON GUR.game_user_id = GU.id
+          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUIDS
+            ON GUIDS.game_user_record_id = GUR.id
+          JOIN talentumehs_valle_magico.vocationals_orientations VO
+            ON GUIDS.vocational_orientation_id = VO.id
+          WHERE HQ.id = ${id}
+          GROUP BY (GU.id)
+      ) as TVBU
+        ON TOBUO.game_user_id = TVBU.id
+      RIGHT JOIN talentumehs_valle_magico.vocationals_orientations VO
+        ON TOBUO.vocational_orientation = VO.id
+      GROUP BY (VO.id), institution_id, headquarter_id
+      ORDER BY institution_id, headquarter_id, grade_id, (VO.name), (vocational_average)
     `);
 
     for (const key in headquarterWithAsignatures) {
@@ -1187,6 +1576,74 @@ export class DashBoardService {
                 },
               ],
               vocaciones: [],
+            },
+          ],
+        });
+      }
+    }
+
+    for (const key in headquarterWithVocations) {
+      const sedeIndex = dataToReturn.municipios[0].sedes
+        .map((sede) => sede.id)
+        .indexOf(headquarterWithVocations[key].headquarter_name);
+      if (sedeIndex != -1) {
+        const gradeIndex = dataToReturn.municipios[0].sedes[sedeIndex].grados
+          .map((grade) => grade.id)
+          .indexOf(
+            this.gradesFromNumberToString(
+              headquarterWithVocations[key].grade_id,
+            ),
+          );
+
+        if (gradeIndex != -1) {
+          const notIntelligenceFound =
+            dataToReturn.municipios[0].sedes[sedeIndex].grados[
+              gradeIndex
+            ].vocaciones
+              .map((inteligencia) => inteligencia.id)
+              .indexOf(headquarterWithVocations[key].vocational_name) == -1;
+          if (notIntelligenceFound) {
+            dataToReturn.municipios[0].sedes[sedeIndex].grados[
+              gradeIndex
+            ].vocaciones.push({
+              id: headquarterWithVocations[key].vocational_name,
+              promedio: headquarterWithVocations[key].vocational_average,
+            });
+          }
+        } else {
+          dataToReturn.municipios[0].sedes[sedeIndex].grados.push({
+            id: this.gradesFromNumberToString(
+              headquarterWithVocations[key].grade_id,
+            ),
+            asignatura: [],
+            inteligencias: [],
+            estilos: [],
+            vocaciones: [
+              {
+                id: headquarterWithVocations[key].vocational_name,
+                promedio: headquarterWithVocations[key].vocational_average,
+              },
+            ],
+          });
+        }
+      } else {
+        dataToReturn.municipios[0].sedes.push({
+          id: headquarterWithVocations[key].headquarter_name,
+          institutcion: headquarterWithVocations[key].institution_name,
+          grados: [
+            {
+              id: this.gradesFromNumberToString(
+                headquarterWithVocations[key].grade_id,
+              ),
+              asignatura: [],
+              inteligencias: [],
+              estilos: [],
+              vocaciones: [
+                {
+                  id: headquarterWithVocations[key].vocational_name,
+                  promedio: headquarterWithVocations[key].vocational_average,
+                },
+              ],
             },
           ],
         });
@@ -1340,6 +1797,88 @@ export class DashBoardService {
         ORDER BY (TSBUS.institutions_id), (TSBUS.headquarter_id), (TSBUS.style)
     `);
 
+    const townWithVocations = await this.manager.query(`
+      SELECT 
+      TOBUO.department_id as 'department_id',
+      TOBUO.department_name as 'department_name', 
+      TOBUO.town_id as 'town_id',
+      TOBUO.town_name as 'town_name',
+      TOBUO.institution_id as 'institution_id',
+      TOBUO.institution_name as 'institution_name', 
+      TOBUO.headquarter_id as 'headquarter_id',
+      TOBUO.headquarter_name as 'headquarter_name',
+      TOBUO.grade_id as 'grade_id',
+      VO.name as 'vocational_name',
+      ROUND(AVG(TOBUO.total_by_orientation/TVBU.total_by_user), 2) * 100 as 'vocational_average'
+      FROM (
+        SELECT
+          GU.grade_id as 'grade_id',
+          DP.id as 'department_id',
+          DP.name as 'department_name',
+          TW.id as 'town_id',
+          TW.name as 'town_name',
+          IT.id as 'institution_id',
+          IT.name as 'institution_name',
+          HQ.id as 'headquarter_id',
+          HQ.name as 'headquarter_name',
+          GU.id as 'game_user_id',
+          VO.id as 'vocational_orientation',
+          COUNT(GUIDS.id) as 'total_by_orientation'
+          FROM talentumehs_valle_open_location.departments DP
+          JOIN talentumehs_valle_open_location.towns TW
+            ON DP.id = TW.department_id
+          JOIN talentumehs_valle_open_location.headquarters HQ
+            ON TW.id = HQ.town_id
+          JOIN talentumehs_valle_open_location.institutions IT
+            ON HQ.institution_id = IT.id
+          JOIN talentumehs_valle_magico.game_users GU
+            ON GU.headquarter_id = HQ.id
+          JOIN talentumehs_valle_magico.game_user_records GUR
+            ON GUR.game_user_id = GU.id
+          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUIDS
+            ON GUIDS.game_user_record_id = GUR.id
+          JOIN talentumehs_valle_magico.vocationals_orientations VO
+            ON GUIDS.vocational_orientation_id = VO.id
+          WHERE TW.id = ${id}
+          GROUP BY (VO.id), (GU.id)
+      ) as TOBUO
+      JOIN (
+        SELECT
+          DP.id as 'department_id',
+          DP.name as 'department_name',
+          TW.id as 'town_id',
+          TW.name as 'town_name',
+          IT.id as 'institution_id',
+          IT.name as 'institution_name',
+          HQ.id as 'headquarter_id',
+          HQ.name as 'headquarter_name',
+          GU.id,
+          COUNT(GUIDS.id) as 'total_by_user'
+          FROM talentumehs_valle_open_location.departments DP
+          JOIN talentumehs_valle_open_location.towns TW
+            ON DP.id = TW.department_id
+          JOIN talentumehs_valle_open_location.headquarters HQ
+            ON TW.id = HQ.town_id
+          JOIN talentumehs_valle_open_location.institutions IT
+            ON HQ.institution_id = IT.id
+          JOIN talentumehs_valle_magico.game_users GU
+            ON GU.headquarter_id = HQ.id
+          JOIN talentumehs_valle_magico.game_user_records GUR
+            ON GUR.game_user_id = GU.id
+          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUIDS
+            ON GUIDS.game_user_record_id = GUR.id
+          JOIN talentumehs_valle_magico.vocationals_orientations VO
+            ON GUIDS.vocational_orientation_id = VO.id
+          WHERE TW.id = ${id}
+          GROUP BY (GU.id)
+      ) as TVBU
+        ON TOBUO.game_user_id = TVBU.id
+      RIGHT JOIN talentumehs_valle_magico.vocationals_orientations VO
+        ON TOBUO.vocational_orientation = VO.id
+      GROUP BY (VO.id), institution_id, headquarter_id
+      ORDER BY institution_id, headquarter_id, grade_id, (VO.name), (vocational_average)
+    `);
+
     for (const key in headquarterWithAsignatures) {
       if (dataToReturn.municipios.length === 0) {
         dataToReturn.municipios.push({
@@ -1560,6 +2099,70 @@ export class DashBoardService {
                 },
               ],
               vocaciones: [],
+            },
+          ],
+        });
+      }
+    }
+
+    for (const key in townWithVocations) {
+      const sedeIndex = dataToReturn.municipios[0].sedes
+        .map((sede) => sede.id)
+        .indexOf(townWithVocations[key].headquarter_name);
+      if (sedeIndex != -1) {
+        const gradeIndex = dataToReturn.municipios[0].sedes[sedeIndex].grados
+          .map((grade) => grade.id)
+          .indexOf(
+            this.gradesFromNumberToString(townWithVocations[key].grade_id),
+          );
+
+        if (gradeIndex != -1) {
+          const notIntelligenceFound =
+            dataToReturn.municipios[0].sedes[sedeIndex].grados[
+              gradeIndex
+            ].vocaciones
+              .map((inteligencia) => inteligencia.id)
+              .indexOf(townWithVocations[key].vocational_name) == -1;
+          if (notIntelligenceFound) {
+            dataToReturn.municipios[0].sedes[sedeIndex].grados[
+              gradeIndex
+            ].vocaciones.push({
+              id: townWithVocations[key].vocational_name,
+              promedio: townWithVocations[key].vocational_average,
+            });
+          }
+        } else {
+          dataToReturn.municipios[0].sedes[sedeIndex].grados.push({
+            id: this.gradesFromNumberToString(townWithVocations[key].grade_id),
+            asignatura: [],
+            inteligencias: [],
+            estilos: [],
+            vocaciones: [
+              {
+                id: townWithVocations[key].vocational_name,
+                promedio: townWithVocations[key].vocational_average,
+              },
+            ],
+          });
+        }
+      } else {
+        dataToReturn.municipios[0].sedes.push({
+          id: townWithVocations[key].headquarter_name,
+          institutcion: townWithVocations[key].institution_name,
+          grados: [
+            {
+              id: this.gradesFromNumberToString(
+                townWithVocations[key].grade_id,
+              ),
+              asignatura: [],
+              inteligencias: [],
+              estilos: [],
+              vocaciones: [
+                {
+                  id: townWithVocations[key].vocational_name,
+                  promedio: townWithVocations[key].vocational_average,
+                },
+              ],
             },
           ],
         });
