@@ -6,13 +6,23 @@ import { DashBoardService } from './dashboard.service';
 export class DashBoardController {
   constructor(private dashBoardService: DashBoardService) {}
 
-  @Get('/:id')
+  @Get('get-data/department/:id')
   async getDashboardDataByDepartment(@Param('id') id: string) {
     return this.dashBoardService.getDashboardDataByDepartment(id);
   }
 
-  @Get('/v2/:id')
-  async getDashboardDataByDepartmentV2(@Param('id') id: string) {
-    return this.dashBoardService.getDashboardDataByDepartmentV2(id);
+  @Get('get-data/institution/:id')
+  async getDashboardDataByInstitution(@Param('id') id: string) {
+    return this.dashBoardService.getDashboardDataByInstitution(id);
+  }
+
+  @Get('get-data/headquarter/:id')
+  async getDashboardDataByHeadquarter(@Param('id') id: string) {
+    return this.dashBoardService.getDashboardDataByHeadquarter(id);
+  }
+
+  @Get('get-data/town/:id')
+  async getDashboardDataByTown(@Param('id') id: string) {
+    return this.dashBoardService.getDashboardDataByTown(id);
   }
 }
