@@ -19,28 +19,31 @@ import { Game_user_records } from './game-user-records/game-user-record.entity';
 import { Mini_games } from './mini-games/mini-game.entity';
 import { Subject_mini_game } from './subject-mini-game/subject-mini-game.entity';
 import { Subjects } from './subjects/subject.entity';
-
-const defaultOptions: TypeOrmModule = {
-  type: 'mysql',
-  host: 'localhost',
-  port: 3306,
-  username: 'root',
-  password: 'password',
-};
-const connectionTwo = 'talentumehs_valle_magico';
+import { QueriesModule } from './utils/queries/queries.module';
+import { ParserModule } from './utils/parser/parser.module';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
+    ConfigModule.forRoot(),
     TypeOrmModule.forRoot({
-      ...defaultOptions,
-      database: 'talentumehs_valle_open_location',
+      type: 'mysql',
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT),
+      username: process.env.DB_USERNAME,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_ONE_NAME,
       entities: [Departments, Towns, Institutions],
       autoLoadEntities: true,
     }),
     TypeOrmModule.forRoot({
-      ...defaultOptions,
-      name: connectionTwo,
-      database: 'talentumehs_valle_magico',
+      type: 'mysql',
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT),
+      name: process.env.DB_TWO_NAME,
+      username: process.env.DB_USERNAME,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_TWO_NAME,
       entities: [
         Game_Users,
         Game_user_records,
@@ -61,6 +64,8 @@ const connectionTwo = 'talentumehs_valle_magico';
     SubjectMiniGameModule,
     SubjectsModule,
     GradesModule,
+    QueriesModule,
+    ParserModule,
   ],
 })
 export class AppModule {}

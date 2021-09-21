@@ -1,258 +1,45 @@
 import { Injectable } from '@nestjs/common';
-import { Game_user_records } from 'src/game-user-records/game-user-record.entity';
-import { Game_Users } from 'src/game-users/games-user.entity';
-import { GradesRepository } from 'src/grades/grades.repository';
-import { Headquarters } from 'src/headquarters/headquarter.entity';
-import { Institutions } from 'src/institutions/institution.entity';
-import { Mini_games } from 'src/mini-games/mini-game.entity';
-import { Subject_mini_game } from 'src/subject-mini-game/subject-mini-game.entity';
-import { Subjects } from 'src/subjects/subject.entity';
-import { Towns } from 'src/towns/town.entity';
-import {
-  createQueryBuilder,
-  getConnection,
-  getManager,
-  getRepository,
-} from 'typeorm';
+import { ParserService } from 'src/utils/parser/parser.service';
+import { QueriesService } from 'src/utils/queries/queries.service';
+import { getManager } from 'typeorm';
+import { FilterType } from './dashboard-filter-type.enum';
 
 @Injectable()
 export class DashBoardService {
   private manager = getManager();
 
-  async getDashboardDataByDepartment(id) {
+  constructor(
+    private parserService: ParserService,
+    private queriesService: QueriesService,
+  ) {}
+
+  async getDashboardDataByDepartment(departmentId) {
     const dataToReturn = {
       departamento: 'Valle del Cauca',
       municipios: [],
     };
 
-    const departmentWithAsignatures = await this.manager.query(`
-      SELECT 
-        DP.id as 'department_id',
-        DP.name as 'department_name',
-        TW.id as 'town_id',
-        TW.name as 'town_name',
-        IT.id as 'institution_id',
-        IT.name as 'institution_name',
-        HQ.id as 'headquarter_id',
-        HQ.name as 'headquarter_name',
-        GU.grade_id as 'grade_id',
-        S.id as 'subject_id',
-        S.name as 'subject_name',
-        ROUND(AVG(GUR.total_score), 2) as 'subject_average' 
-      FROM talentumehs_valle_open_location.departments DP 
-          JOIN talentumehs_valle_open_location.towns TW 
-            ON TW.department_id = DP.id 
-          JOIN talentumehs_valle_open_location.headquarters HQ 
-            ON HQ.town_id = TW.id 
-          JOIN talentumehs_valle_open_location.institutions IT
-            ON HQ.institution_id = IT.id
-          JOIN talentumehs_valle_magico.game_users GU 
-            ON GU.headquarter_id = HQ.id 
-          JOIN talentumehs_valle_magico.game_user_records GUR 
-            ON GUR.game_user_id = GU.id 
-          JOIN talentumehs_valle_magico.mini_games MG 
-            ON GUR.mini_game_id = MG.id 
-            AND GU.grade_id = MG.grade_id 
-          JOIN talentumehs_valle_magico.subject_mini_game SMG 
-            ON SMG.mini_game_id = MG.id 
-          RIGHT JOIN talentumehs_valle_magico.subjects S 
-            ON SMG.subject_id = S.id 
-      WHERE DP.id = ${id}
-      GROUP BY (TW.id), (IT.id), (HQ.id), (GU.grade_id), (S.id)
-      ORDER BY (TW.name), (HQ.id), (GU.grade_id), (S.name)
-    `);
+    const departmentWithAsignatures =
+      await this.queriesService.getDataWithAsignatures(
+        departmentId,
+        FilterType.DEPARTMENT,
+      );
 
-    const departmentWithInstelligences = await this.manager.query(`
-      SELECT 
-        DP.id as 'department_id',
-        DP.name as 'department_name',
-        TW.id as 'town_id',
-        TW.name as 'town_name',
-        IT.id as 'institution_id',
-        IT.name as 'institution_name',
-        HQ.id as 'headquarter_id',
-        HQ.name as 'headquarter_name',
-        GU.grade_id as 'grade_id',
-        I.id as 'intelligence_id',
-        I.name as 'intelligence_name',
-        ROUND(AVG(GUI.percentage_value), 2) as 'intelligence_average'
-      FROM talentumehs_valle_open_location.departments DP 
-          JOIN talentumehs_valle_open_location.towns TW 
-            ON TW.department_id = DP.id 
-          JOIN talentumehs_valle_open_location.headquarters HQ 
-            ON HQ.town_id = TW.id 
-          JOIN talentumehs_valle_open_location.institutions IT
-            ON HQ.institution_id = IT.id
-          JOIN talentumehs_valle_magico.game_users GU 
-            ON GU.headquarter_id = HQ.id 
-          JOIN talentumehs_valle_magico.game_user_records GUR 
-            ON GUR.game_user_id = GU.id 
-          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUI
-            ON GUI.game_user_record_id = GUR.id
-          RIGHT JOIN talentumehs_valle_magico.intelligence_indicators II
-            ON GUI.intelligence_indicator_id = II.id
-          RIGHT JOIN talentumehs_valle_magico.intelligences I
-            ON II.intelligence_id = I.id
-      WHERE DP.id = ${id}
-      GROUP BY (TW.id), (IT.id), (HQ.id), (GU.grade_id), (I.id)
-      ORDER BY (TW.name), (HQ.id), (GU.grade_id), (I.name)
-    `);
+    const departmentWithInstelligences =
+      await this.queriesService.getDataWithInstelligences(
+        departmentId,
+        FilterType.DEPARTMENT,
+      );
 
-    const departmentWithStyles = await this.manager.query(`
-      SELECT 
-        TSBUS.town_id,
-        TSBUS.town_name,
-        TSBUS.institutions_id,
-        TSBUS.institutions_name,
-        TSBUS.headquarter_id,
-        TSBUS.headquarter_name,
-        TSBUS.grade_id,
-        S.name as 'style_name',
-        ROUND(AVG(TSBUS.total_by_area/TSBU.total_by_user), 2) * 100 as 'style_average'
-        FROM (
-          SELECT
-            TW.id as 'town_id',
-            TW.name as 'town_name',
-            IT.id as 'institutions_id',
-            IT.name as 'institutions_name',
-            HQ.id as 'headquarter_id',
-            HQ.name as 'headquarter_name',
-            GU.id as 'game_user_id',
-            GU.grade_id,
-            DS.style_id as 'style',
-            COUNT(GUI.id) as 'total_by_area'
-            FROM talentumehs_valle_open_location.departments DP
-            JOIN talentumehs_valle_open_location.towns TW
-              ON DP.id = TW.department_id
-            JOIN talentumehs_valle_open_location.headquarters HQ
-              ON TW.id = HQ.town_id
-            JOIN talentumehs_valle_open_location.institutions IT
-              ON HQ.institution_id = IT.id
-            JOIN talentumehs_valle_magico.game_users GU
-              ON GU.headquarter_id = HQ.id
-            JOIN talentumehs_valle_magico.game_user_records GUR
-              ON GUR.game_user_id = GU.id
-            JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUI
-              ON GUI.game_user_record_id = GUR.id
-            JOIN talentumehs_valle_magico.description_styles DS
-              ON GUI.description_style_id = DS.id
-            WHERE DP.id = ${id}
-            GROUP BY (DS.style_id), (GU.id) 
-        ) AS TSBUS
-        JOIN (
-          SELECT
-            TW.id as 'town_id',
-            TW.name as 'town_name',
-            IT.id as 'institutions_id',
-            IT.name as 'institutions_name',
-            GU.id,
-            GU.grade_id,
-            COUNT(GUI.id) as 'total_by_user'
-            FROM talentumehs_valle_open_location.departments DP
-            JOIN talentumehs_valle_open_location.towns TW
-              ON DP.id = TW.department_id
-            JOIN talentumehs_valle_open_location.headquarters HQ
-              ON TW.id = HQ.town_id
-            JOIN talentumehs_valle_open_location.institutions IT
-              ON HQ.institution_id = IT.id
-            JOIN talentumehs_valle_magico.game_users GU
-              ON GU.headquarter_id = HQ.id
-            JOIN talentumehs_valle_magico.game_user_records GUR
-              ON GUR.game_user_id = GU.id
-            JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUI
-              ON GUI.game_user_record_id = GUR.id
-            JOIN talentumehs_valle_magico.description_styles DS
-              ON GUI.description_style_id = DS.id
-            WHERE DP.id = ${id}
-            GROUP BY (GU.id)
-        ) AS TSBU 
-          ON TSBUS.game_user_id = TSBU.id
-        JOIN talentumehs_valle_magico.styles S
-          ON TSBUS.style = S.id
-        GROUP BY (TSBUS.institutions_id), (TSBUS.headquarter_id), (TSBUS.style), (TSBUS.grade_id)
-        ORDER BY (TSBUS.institutions_id), (TSBUS.headquarter_id), (TSBUS.style)
-    `);
-    const departmentWithVocations = await this.manager.query(`
-      SELECT 
-      TOBUO.department_id as 'department_id',
-      TOBUO.department_name as 'department_name', 
-      TOBUO.town_id as 'town_id',
-      TOBUO.town_name as 'town_name',
-      TOBUO.institution_id as 'institution_id',
-      TOBUO.institution_name as 'institution_name', 
-      TOBUO.headquarter_id as 'headquarter_id',
-      TOBUO.headquarter_name as 'headquarter_name',
-      TOBUO.grade_id as 'grade_id',
-      VO.name as 'vocational_name',
-      ROUND(AVG(TOBUO.total_by_orientation/TVBU.total_by_user), 2) * 100 as 'vocational_average'
-      FROM (
-        SELECT
-          GU.grade_id as 'grade_id',
-          DP.id as 'department_id',
-          DP.name as 'department_name',
-          TW.id as 'town_id',
-          TW.name as 'town_name',
-          IT.id as 'institution_id',
-          IT.name as 'institution_name',
-          HQ.id as 'headquarter_id',
-          HQ.name as 'headquarter_name',
-          GU.id as 'game_user_id',
-          VO.id as 'vocational_orientation',
-          COUNT(GUIDS.id) as 'total_by_orientation'
-          FROM talentumehs_valle_open_location.departments DP
-          JOIN talentumehs_valle_open_location.towns TW
-            ON DP.id = TW.department_id
-          JOIN talentumehs_valle_open_location.headquarters HQ
-            ON TW.id = HQ.town_id
-          JOIN talentumehs_valle_open_location.institutions IT
-            ON HQ.institution_id = IT.id
-          JOIN talentumehs_valle_magico.game_users GU
-            ON GU.headquarter_id = HQ.id
-          JOIN talentumehs_valle_magico.game_user_records GUR
-            ON GUR.game_user_id = GU.id
-          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUIDS
-            ON GUIDS.game_user_record_id = GUR.id
-          JOIN talentumehs_valle_magico.vocationals_orientations VO
-            ON GUIDS.vocational_orientation_id = VO.id
-          WHERE DP.id = 1
-          GROUP BY (VO.id), (GU.id)
-      ) as TOBUO
-      JOIN (
-        SELECT
-          DP.id as 'department_id',
-          DP.name as 'department_name',
-          TW.id as 'town_id',
-          TW.name as 'town_name',
-          IT.id as 'institution_id',
-          IT.name as 'institution_name',
-          HQ.id as 'headquarter_id',
-          HQ.name as 'headquarter_name',
-          GU.id,
-          COUNT(GUIDS.id) as 'total_by_user'
-          FROM talentumehs_valle_open_location.departments DP
-          JOIN talentumehs_valle_open_location.towns TW
-            ON DP.id = TW.department_id
-          JOIN talentumehs_valle_open_location.headquarters HQ
-            ON TW.id = HQ.town_id
-          JOIN talentumehs_valle_open_location.institutions IT
-            ON HQ.institution_id = IT.id
-          JOIN talentumehs_valle_magico.game_users GU
-            ON GU.headquarter_id = HQ.id
-          JOIN talentumehs_valle_magico.game_user_records GUR
-            ON GUR.game_user_id = GU.id
-          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUIDS
-            ON GUIDS.game_user_record_id = GUR.id
-          JOIN talentumehs_valle_magico.vocationals_orientations VO
-            ON GUIDS.vocational_orientation_id = VO.id
-          WHERE DP.id = 1
-          GROUP BY (GU.id)
-      ) as TVBU
-        ON TOBUO.game_user_id = TVBU.id
-      RIGHT JOIN talentumehs_valle_magico.vocationals_orientations VO
-        ON TOBUO.vocational_orientation = VO.id
-      GROUP BY (VO.id), institution_id, headquarter_id
-      ORDER BY institution_id, headquarter_id, grade_id, (VO.name), (vocational_average)
-    `);
+    const departmentWithStyles =
+      await this.queriesService.getDepartmentWithStyles(departmentId);
+
+    const departmentWithVocations =
+      await this.queriesService.getDataWithVocations(
+        departmentId,
+        FilterType.DEPARTMENT,
+      );
+
     for (const key in departmentWithAsignatures) {
       if (dataToReturn.municipios.length === 0) {
         dataToReturn.municipios.push({
@@ -263,12 +50,14 @@ export class DashBoardService {
               institutcion: departmentWithAsignatures[key].institution_name,
               grados: [
                 {
-                  id: this.gradesFromNumberToString(
+                  id: this.parserService.gradesFromNumberToString(
                     departmentWithAsignatures[key].grade_id,
                   ),
                   asignatura: [
                     {
                       id: departmentWithAsignatures[key].subject_name,
+                      cantidadDeEstudiantes:
+                        departmentWithAsignatures[key].total_students,
                       promedio: departmentWithAsignatures[key].subject_average,
                     },
                   ],
@@ -296,7 +85,7 @@ export class DashBoardService {
             ].grados
               .map((grade) => grade.id)
               .indexOf(
-                this.gradesFromNumberToString(
+                this.parserService.gradesFromNumberToString(
                   departmentWithAsignatures[key].grade_id,
                 ),
               );
@@ -306,18 +95,22 @@ export class DashBoardService {
                 gradeIndex
               ].asignatura.push({
                 id: departmentWithAsignatures[key].subject_name,
+                cantidadDeEstudiantes:
+                  departmentWithAsignatures[key].total_students,
                 promedio: departmentWithAsignatures[key].subject_average,
               });
             } else {
               dataToReturn.municipios[municipioIndex].sedes[
                 sedeIndex
               ].grados.push({
-                id: this.gradesFromNumberToString(
+                id: this.parserService.gradesFromNumberToString(
                   departmentWithAsignatures[key].grade_id,
                 ),
                 asignatura: [
                   {
                     id: departmentWithAsignatures[key].subject_name,
+                    cantidadDeEstudiantes:
+                      departmentWithAsignatures[key].total_students,
                     promedio: departmentWithAsignatures[key].subject_average,
                   },
                 ],
@@ -332,12 +125,14 @@ export class DashBoardService {
               institutcion: departmentWithAsignatures[key].institution_name,
               grados: [
                 {
-                  id: this.gradesFromNumberToString(
+                  id: this.parserService.gradesFromNumberToString(
                     departmentWithAsignatures[key].grade_id,
                   ),
                   asignatura: [
                     {
                       id: departmentWithAsignatures[key].subject_name,
+                      cantidadDeEstudiantes:
+                        departmentWithAsignatures[key].total_students,
                       promedio: departmentWithAsignatures[key].subject_average,
                     },
                   ],
@@ -357,12 +152,14 @@ export class DashBoardService {
                 institutcion: departmentWithAsignatures[key].institution_name,
                 grados: [
                   {
-                    id: this.gradesFromNumberToString(
+                    id: this.parserService.gradesFromNumberToString(
                       departmentWithAsignatures[key].grade_id,
                     ),
                     asignatura: [
                       {
                         id: departmentWithAsignatures[key].subject_name,
+                        cantidadDeEstudiantes:
+                          departmentWithAsignatures[key].total_students,
                         promedio:
                           departmentWithAsignatures[key].subject_average,
                       },
@@ -393,7 +190,7 @@ export class DashBoardService {
           ].grados
             .map((grade) => grade.id)
             .indexOf(
-              this.gradesFromNumberToString(
+              this.parserService.gradesFromNumberToString(
                 departmentWithInstelligences[key].grade_id,
               ),
             );
@@ -411,7 +208,9 @@ export class DashBoardService {
                 gradeIndex
               ].inteligencias.push({
                 id: departmentWithInstelligences[key].intelligence_name,
-                promedio:
+                cantidadDeEstudiantes:
+                  departmentWithInstelligences[key].total_students,
+                indicador:
                   departmentWithInstelligences[key].intelligence_average,
               });
             }
@@ -419,14 +218,16 @@ export class DashBoardService {
             dataToReturn.municipios[municipioIndex].sedes[
               sedeIndex
             ].grados.push({
-              id: this.gradesFromNumberToString(
+              id: this.parserService.gradesFromNumberToString(
                 departmentWithInstelligences[key].grade_id,
               ),
               asignatura: [],
               inteligencias: [
                 {
                   id: departmentWithInstelligences[key].intelligence_name,
-                  promedio:
+                  cantidadDeEstudiantes:
+                    departmentWithInstelligences[key].total_students,
+                  indicador:
                     departmentWithInstelligences[key].intelligence_average,
                 },
               ],
@@ -440,14 +241,16 @@ export class DashBoardService {
             institutcion: departmentWithInstelligences[key].institution_name,
             grados: [
               {
-                id: this.gradesFromNumberToString(
+                id: this.parserService.gradesFromNumberToString(
                   departmentWithInstelligences[key].grade_id,
                 ),
                 asignatura: [],
                 inteligencias: [
                   {
                     id: departmentWithInstelligences[key].intelligence_name,
-                    promedio:
+                    cantidadDeEstudiantes:
+                      departmentWithInstelligences[key].total_students,
+                    indicador:
                       departmentWithInstelligences[key].intelligence_average,
                   },
                 ],
@@ -474,7 +277,9 @@ export class DashBoardService {
           ].grados
             .map((grade) => grade.id)
             .indexOf(
-              this.gradesFromNumberToString(departmentWithStyles[key].grade_id),
+              this.parserService.gradesFromNumberToString(
+                departmentWithStyles[key].grade_id,
+              ),
             );
 
           if (gradeIndex != -1) {
@@ -489,14 +294,15 @@ export class DashBoardService {
                 gradeIndex
               ].estilos.push({
                 id: departmentWithStyles[key].style_name,
-                promedio: departmentWithStyles[key].style_average,
+                cantidadDeEstudiantes: departmentWithStyles[key].total_students,
+                puntos: departmentWithStyles[key].style_average,
               });
             }
           } else {
             dataToReturn.municipios[municipioIndex].sedes[
               sedeIndex
             ].grados.push({
-              id: this.gradesFromNumberToString(
+              id: this.parserService.gradesFromNumberToString(
                 departmentWithStyles[key].grade_id,
               ),
               asignatura: [],
@@ -504,7 +310,9 @@ export class DashBoardService {
               estilos: [
                 {
                   id: departmentWithStyles[key].style_name,
-                  promedio: departmentWithStyles[key].style_average,
+                  cantidadDeEstudiantes:
+                    departmentWithStyles[key].total_students,
+                  puntos: departmentWithStyles[key].style_average,
                 },
               ],
               vocaciones: [],
@@ -516,7 +324,7 @@ export class DashBoardService {
             institutcion: departmentWithStyles[key].institution_name,
             grados: [
               {
-                id: this.gradesFromNumberToString(
+                id: this.parserService.gradesFromNumberToString(
                   departmentWithStyles[key].grade_id,
                 ),
                 asignatura: [],
@@ -524,7 +332,9 @@ export class DashBoardService {
                 estilos: [
                   {
                     id: departmentWithStyles[key].style_name,
-                    promedio: departmentWithStyles[key].style_average,
+                    cantidadDeEstudiantes:
+                      departmentWithStyles[key].total_students,
+                    puntos: departmentWithStyles[key].style_average,
                   },
                 ],
                 vocaciones: [],
@@ -549,7 +359,7 @@ export class DashBoardService {
           ].grados
             .map((grade) => grade.id)
             .indexOf(
-              this.gradesFromNumberToString(
+              this.parserService.gradesFromNumberToString(
                 departmentWithVocations[key].grade_id,
               ),
             );
@@ -566,14 +376,16 @@ export class DashBoardService {
                 gradeIndex
               ].vocaciones.push({
                 id: departmentWithVocations[key].vocational_name,
-                promedio: departmentWithVocations[key].vocational_average,
+                cantidadDeEstudiantes:
+                  departmentWithVocations[key].total_students,
+                puntos: departmentWithVocations[key].vocational_average,
               });
             }
           } else {
             dataToReturn.municipios[municipioIndex].sedes[
               sedeIndex
             ].grados.push({
-              id: this.gradesFromNumberToString(
+              id: this.parserService.gradesFromNumberToString(
                 departmentWithVocations[key].grade_id,
               ),
               asignatura: [],
@@ -582,7 +394,9 @@ export class DashBoardService {
               vocaciones: [
                 {
                   id: departmentWithVocations[key].vocational_name,
-                  promedio: departmentWithVocations[key].vocational_average,
+                  cantidadDeEstudiantes:
+                    departmentWithVocations[key].total_students,
+                  puntos: departmentWithVocations[key].vocational_average,
                 },
               ],
             });
@@ -593,7 +407,7 @@ export class DashBoardService {
             institutcion: departmentWithVocations[key].institution_name,
             grados: [
               {
-                id: this.gradesFromNumberToString(
+                id: this.parserService.gradesFromNumberToString(
                   departmentWithVocations[key].grade_id,
                 ),
                 asignatura: [],
@@ -602,7 +416,9 @@ export class DashBoardService {
                 vocaciones: [
                   {
                     id: departmentWithVocations[key].vocational_name,
-                    promedio: departmentWithVocations[key].vocational_average,
+                    cantidadDeEstudiantes:
+                      departmentWithVocations[key].total_students,
+                    puntos: departmentWithVocations[key].vocational_average,
                   },
                 ],
               },
@@ -615,227 +431,34 @@ export class DashBoardService {
     return dataToReturn;
   }
 
-  async getDashboardDataByInstitution(id) {
+  async getDashboardDataByInstitution(institutionId) {
     const dataToReturn = {
       departamento: 'Valle del Cauca',
       municipios: [],
     };
 
-    const institutionWithAsignatures = await this.manager.query(`
-      SELECT 
-      DP.id as 'department_id',
-        DP.name as 'department_name',
-        TW.id as 'town_id',
-        TW.name as 'town_name',
-        IT.id as 'institution_id',
-        IT.name as 'institution_name',
-        HQ.id as 'headquarter_id',
-        HQ.name as 'headquarter_name',
-        GU.grade_id as 'grade_id',
-        S.id as 'subject_id',
-        S.name as 'subject_name',
-        ROUND(AVG(GUR.total_score), 2) as 'subject_average' 
-      FROM talentumehs_valle_open_location.departments DP 
-          JOIN talentumehs_valle_open_location.towns TW 
-            ON TW.department_id = DP.id 
-          JOIN talentumehs_valle_open_location.headquarters HQ 
-            ON HQ.town_id = TW.id 
-          JOIN talentumehs_valle_open_location.institutions IT
-            ON HQ.institution_id = IT.id
-          JOIN talentumehs_valle_magico.game_users GU 
-            ON GU.headquarter_id = HQ.id 
-          JOIN talentumehs_valle_magico.game_user_records GUR 
-            ON GUR.game_user_id = GU.id 
-          JOIN talentumehs_valle_magico.mini_games MG 
-            ON GUR.mini_game_id = MG.id 
-            AND GU.grade_id = MG.grade_id 
-          JOIN talentumehs_valle_magico.subject_mini_game SMG 
-            ON SMG.mini_game_id = MG.id 
-          RIGHT JOIN talentumehs_valle_magico.subjects S 
-            ON SMG.subject_id = S.id 
-      WHERE IT.id = ${id}
-      GROUP BY (TW.id), (IT.id), (HQ.id), (GU.grade_id), (S.id)
-      ORDER BY (TW.name), (HQ.id), (GU.grade_id), (S.name)
-    `);
+    const institutionWithAsignatures =
+      await this.queriesService.getDataWithAsignatures(
+        institutionId,
+        FilterType.INSTITUTION,
+      );
 
-    const institutionWithInstelligences = await this.manager.query(`
-      SELECT 
-      DP.id as 'department_id',
-        DP.name as 'department_name',
-        TW.id as 'town_id',
-        TW.name as 'town_name',
-        IT.id as 'institution_id',
-        IT.name as 'institution_name',
-        HQ.id as 'headquarter_id',
-        HQ.name as 'headquarter_name',
-        GU.grade_id as 'grade_id',
-        I.id as 'intelligence_id',
-        I.name as 'intelligence_name',
-        ROUND(AVG(GUI.percentage_value), 2) as 'intelligence_average'
-      FROM talentumehs_valle_open_location.departments DP 
-          JOIN talentumehs_valle_open_location.towns TW 
-            ON TW.department_id = DP.id 
-          JOIN talentumehs_valle_open_location.headquarters HQ 
-            ON HQ.town_id = TW.id 
-          JOIN talentumehs_valle_open_location.institutions IT
-            ON HQ.institution_id = IT.id
-          JOIN talentumehs_valle_magico.game_users GU 
-            ON GU.headquarter_id = HQ.id 
-          JOIN talentumehs_valle_magico.game_user_records GUR 
-            ON GUR.game_user_id = GU.id 
-          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUI
-            ON GUI.game_user_record_id = GUR.id
-          RIGHT JOIN talentumehs_valle_magico.intelligence_indicators II
-            ON GUI.intelligence_indicator_id = II.id
-          RIGHT JOIN talentumehs_valle_magico.intelligences I
-            ON II.intelligence_id = I.id
-      WHERE IT.id = ${id}
-      GROUP BY (TW.id), (IT.id), (HQ.id), (GU.grade_id), (I.id)
-      ORDER BY (TW.name), (HQ.id), (GU.grade_id), (I.name)
-    `);
+    const institutionWithInstelligences =
+      await this.queriesService.getDataWithInstelligences(
+        institutionId,
+        FilterType.INSTITUTION,
+      );
 
-    const institutionWithStyles = await this.manager.query(`
-      SELECT 
-        TSBUS.institutions_id,
-        TSBUS.institutions_name,
-        TSBUS.headquarter_id,
-        TSBUS.headquarter_name,
-        TSBUS.grade_id,
-        S.name as 'style_name',
-        ROUND(AVG(TSBUS.total_by_area/TSBU.total_by_user), 2) * 100 as 'style_average'
-        FROM (
-          SELECT
-            IT.id as 'institutions_id',
-            IT.name as 'institutions_name',
-            HQ.id as 'headquarter_id',
-            HQ.name as 'headquarter_name',
-            GU.id as 'game_user_id',
-            GU.grade_id,
-            DS.style_id as 'style',
-            COUNT(GUI.id) as 'total_by_area'
-            FROM talentumehs_valle_open_location.headquarters HQ
-            JOIN talentumehs_valle_open_location.institutions IT
-              ON HQ.institution_id = IT.id
-            JOIN talentumehs_valle_magico.game_users GU
-              ON GU.headquarter_id = HQ.id
-            JOIN talentumehs_valle_magico.game_user_records GUR
-              ON GUR.game_user_id = GU.id
-            JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUI
-              ON GUI.game_user_record_id = GUR.id
-            JOIN talentumehs_valle_magico.description_styles DS
-              ON GUI.description_style_id = DS.id
-            WHERE IT.id = ${id}
-            GROUP BY (DS.style_id), (GU.id) 
-        ) AS TSBUS
-        JOIN (
-          SELECT
-            IT.id as 'institutions_id',
-            IT.name as 'institutions_name',
-            GU.id,
-            GU.grade_id,
-            COUNT(GUI.id) as 'total_by_user'
-            FROM talentumehs_valle_open_location.headquarters HQ
-            JOIN talentumehs_valle_open_location.institutions IT
-              ON HQ.institution_id = IT.id
-            JOIN talentumehs_valle_magico.game_users GU
-              ON GU.headquarter_id = HQ.id
-            JOIN talentumehs_valle_magico.game_user_records GUR
-              ON GUR.game_user_id = GU.id
-            JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUI
-              ON GUI.game_user_record_id = GUR.id
-            JOIN talentumehs_valle_magico.description_styles DS
-              ON GUI.description_style_id = DS.id
-            WHERE IT.id = ${id}
-            GROUP BY (GU.id)
-        ) AS TSBU 
-          ON TSBUS.game_user_id = TSBU.id
-        JOIN talentumehs_valle_magico.styles S
-          ON TSBUS.style = S.id
-        GROUP BY (TSBUS.institutions_id), (TSBUS.headquarter_id), (TSBUS.style), (TSBUS.grade_id)
-        ORDER BY (TSBUS.institutions_id), (TSBUS.headquarter_id), (TSBUS.style)
-    `);
+    const institutionWithStyles = await this.queriesService.getDataWithStyles(
+      institutionId,
+      FilterType.INSTITUTION,
+    );
 
-    const institutionWithVocations = await this.manager.query(`
-      SELECT 
-      TOBUO.department_id as 'department_id',
-      TOBUO.department_name as 'department_name', 
-      TOBUO.town_id as 'town_id',
-      TOBUO.town_name as 'town_name',
-      TOBUO.institution_id as 'institution_id',
-      TOBUO.institution_name as 'institution_name', 
-      TOBUO.headquarter_id as 'headquarter_id',
-      TOBUO.headquarter_name as 'headquarter_name',
-      TOBUO.grade_id as 'grade_id',
-      VO.name as 'vocational_name',
-      ROUND(AVG(TOBUO.total_by_orientation/TVBU.total_by_user), 2) * 100 as 'vocational_average'
-      FROM (
-        SELECT
-          GU.grade_id as 'grade_id',
-          DP.id as 'department_id',
-          DP.name as 'department_name',
-          TW.id as 'town_id',
-          TW.name as 'town_name',
-          IT.id as 'institution_id',
-          IT.name as 'institution_name',
-          HQ.id as 'headquarter_id',
-          HQ.name as 'headquarter_name',
-          GU.id as 'game_user_id',
-          VO.id as 'vocational_orientation',
-          COUNT(GUIDS.id) as 'total_by_orientation'
-          FROM talentumehs_valle_open_location.departments DP
-          JOIN talentumehs_valle_open_location.towns TW
-            ON DP.id = TW.department_id
-          JOIN talentumehs_valle_open_location.headquarters HQ
-            ON TW.id = HQ.town_id
-          JOIN talentumehs_valle_open_location.institutions IT
-            ON HQ.institution_id = IT.id
-          JOIN talentumehs_valle_magico.game_users GU
-            ON GU.headquarter_id = HQ.id
-          JOIN talentumehs_valle_magico.game_user_records GUR
-            ON GUR.game_user_id = GU.id
-          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUIDS
-            ON GUIDS.game_user_record_id = GUR.id
-          JOIN talentumehs_valle_magico.vocationals_orientations VO
-            ON GUIDS.vocational_orientation_id = VO.id
-          WHERE IT.id = ${id}
-          GROUP BY (VO.id), (GU.id)
-      ) as TOBUO
-      JOIN (
-        SELECT
-          DP.id as 'department_id',
-          DP.name as 'department_name',
-          TW.id as 'town_id',
-          TW.name as 'town_name',
-          IT.id as 'institution_id',
-          IT.name as 'institution_name',
-          HQ.id as 'headquarter_id',
-          HQ.name as 'headquarter_name',
-          GU.id,
-          COUNT(GUIDS.id) as 'total_by_user'
-          FROM talentumehs_valle_open_location.departments DP
-          JOIN talentumehs_valle_open_location.towns TW
-            ON DP.id = TW.department_id
-          JOIN talentumehs_valle_open_location.headquarters HQ
-            ON TW.id = HQ.town_id
-          JOIN talentumehs_valle_open_location.institutions IT
-            ON HQ.institution_id = IT.id
-          JOIN talentumehs_valle_magico.game_users GU
-            ON GU.headquarter_id = HQ.id
-          JOIN talentumehs_valle_magico.game_user_records GUR
-            ON GUR.game_user_id = GU.id
-          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUIDS
-            ON GUIDS.game_user_record_id = GUR.id
-          JOIN talentumehs_valle_magico.vocationals_orientations VO
-            ON GUIDS.vocational_orientation_id = VO.id
-          WHERE IT.id = ${id}
-          GROUP BY (GU.id)
-      ) as TVBU
-        ON TOBUO.game_user_id = TVBU.id
-      RIGHT JOIN talentumehs_valle_magico.vocationals_orientations VO
-        ON TOBUO.vocational_orientation = VO.id
-      GROUP BY (VO.id), institution_id, headquarter_id
-      ORDER BY institution_id, headquarter_id, grade_id, (VO.name), (vocational_average)
-    `);
+    const institutionWithVocations =
+      await this.queriesService.getDataWithVocations(
+        institutionId,
+        FilterType.INSTITUTION,
+      );
 
     for (const key in institutionWithAsignatures) {
       if (dataToReturn.municipios.length === 0) {
@@ -847,12 +470,14 @@ export class DashBoardService {
               institutcion: institutionWithAsignatures[key].institution_name,
               grados: [
                 {
-                  id: this.gradesFromNumberToString(
+                  id: this.parserService.gradesFromNumberToString(
                     institutionWithAsignatures[key].grade_id,
                   ),
                   asignatura: [
                     {
                       id: institutionWithAsignatures[key].subject_name,
+                      cantidadDeEstudiantes:
+                        institutionWithAsignatures[key].total_students,
                       promedio: institutionWithAsignatures[key].subject_average,
                     },
                   ],
@@ -873,7 +498,7 @@ export class DashBoardService {
           const gradeIndex = dataToReturn.municipios[0].sedes[sedeIndex].grados
             .map((grade) => grade.id)
             .indexOf(
-              this.gradesFromNumberToString(
+              this.parserService.gradesFromNumberToString(
                 institutionWithAsignatures[key].grade_id,
               ),
             );
@@ -883,16 +508,20 @@ export class DashBoardService {
               gradeIndex
             ].asignatura.push({
               id: institutionWithAsignatures[key].subject_name,
+              cantidadDeEstudiantes:
+                institutionWithAsignatures[key].total_students,
               promedio: institutionWithAsignatures[key].subject_average,
             });
           } else {
             dataToReturn.municipios[0].sedes[sedeIndex].grados.push({
-              id: this.gradesFromNumberToString(
+              id: this.parserService.gradesFromNumberToString(
                 institutionWithAsignatures[key].grade_id,
               ),
               asignatura: [
                 {
                   id: institutionWithAsignatures[key].subject_name,
+                  cantidadDeEstudiantes:
+                    institutionWithAsignatures[key].total_students,
                   promedio: institutionWithAsignatures[key].subject_average,
                 },
               ],
@@ -907,12 +536,14 @@ export class DashBoardService {
             institutcion: institutionWithAsignatures[key].institution_name,
             grados: [
               {
-                id: this.gradesFromNumberToString(
+                id: this.parserService.gradesFromNumberToString(
                   institutionWithAsignatures[key].grade_id,
                 ),
                 asignatura: [
                   {
                     id: institutionWithAsignatures[key].subject_name,
+                    cantidadDeEstudiantes:
+                      institutionWithAsignatures[key].total_students,
                     promedio: institutionWithAsignatures[key].subject_average,
                   },
                 ],
@@ -934,7 +565,7 @@ export class DashBoardService {
         const gradeIndex = dataToReturn.municipios[0].sedes[sedeIndex].grados
           .map((grade) => grade.id)
           .indexOf(
-            this.gradesFromNumberToString(
+            this.parserService.gradesFromNumberToString(
               institutionWithInstelligences[key].grade_id,
             ),
           );
@@ -952,19 +583,24 @@ export class DashBoardService {
               gradeIndex
             ].inteligencias.push({
               id: institutionWithInstelligences[key].intelligence_name,
-              promedio: institutionWithInstelligences[key].intelligence_average,
+              cantidadDeEstudiantes:
+                institutionWithInstelligences[key].total_students,
+              indicador:
+                institutionWithInstelligences[key].intelligence_average,
             });
           }
         } else {
           dataToReturn.municipios[0].sedes[sedeIndex].grados.push({
-            id: this.gradesFromNumberToString(
+            id: this.parserService.gradesFromNumberToString(
               institutionWithInstelligences[key].grade_id,
             ),
             asignatura: [],
             inteligencias: [
               {
                 id: institutionWithInstelligences[key].intelligence_name,
-                promedio:
+                cantidadDeEstudiantes:
+                  institutionWithInstelligences[key].total_students,
+                indicador:
                   institutionWithInstelligences[key].intelligence_average,
               },
             ],
@@ -978,14 +614,16 @@ export class DashBoardService {
           institutcion: institutionWithInstelligences[key].institution_name,
           grados: [
             {
-              id: this.gradesFromNumberToString(
+              id: this.parserService.gradesFromNumberToString(
                 institutionWithInstelligences[key].grade_id,
               ),
               asignatura: [],
               inteligencias: [
                 {
                   id: institutionWithInstelligences[key].intelligence_name,
-                  promedio:
+                  cantidadDeEstudiantes:
+                    institutionWithInstelligences[key].total_students,
+                  indicador:
                     institutionWithInstelligences[key].intelligence_average,
                 },
               ],
@@ -1005,7 +643,9 @@ export class DashBoardService {
         const gradeIndex = dataToReturn.municipios[0].sedes[sedeIndex].grados
           .map((grade) => grade.id)
           .indexOf(
-            this.gradesFromNumberToString(institutionWithStyles[key].grade_id),
+            this.parserService.gradesFromNumberToString(
+              institutionWithStyles[key].grade_id,
+            ),
           );
 
         if (gradeIndex != -1) {
@@ -1020,12 +660,13 @@ export class DashBoardService {
               gradeIndex
             ].estilos.push({
               id: institutionWithStyles[key].style_name,
-              promedio: institutionWithStyles[key].style_average,
+              cantidadDeEstudiantes: institutionWithStyles[key].total_students,
+              puntos: institutionWithStyles[key].style_average,
             });
           }
         } else {
           dataToReturn.municipios[0].sedes[sedeIndex].grados.push({
-            id: this.gradesFromNumberToString(
+            id: this.parserService.gradesFromNumberToString(
               institutionWithStyles[key].grade_id,
             ),
             asignatura: [],
@@ -1033,7 +674,9 @@ export class DashBoardService {
             estilos: [
               {
                 id: institutionWithStyles[key].style_name,
-                promedio: institutionWithStyles[key].style_average,
+                cantidadDeEstudiantes:
+                  institutionWithStyles[key].total_students,
+                puntos: institutionWithStyles[key].style_average,
               },
             ],
             vocaciones: [],
@@ -1045,7 +688,7 @@ export class DashBoardService {
           institutcion: institutionWithStyles[key].institution_name,
           grados: [
             {
-              id: this.gradesFromNumberToString(
+              id: this.parserService.gradesFromNumberToString(
                 institutionWithStyles[key].grade_id,
               ),
               asignatura: [],
@@ -1053,7 +696,9 @@ export class DashBoardService {
               estilos: [
                 {
                   id: institutionWithStyles[key].style_name,
-                  promedio: institutionWithStyles[key].style_average,
+                  cantidadDeEstudiantes:
+                    institutionWithStyles[key].total_students,
+                  puntos: institutionWithStyles[key].style_average,
                 },
               ],
               vocaciones: [],
@@ -1071,7 +716,7 @@ export class DashBoardService {
         const gradeIndex = dataToReturn.municipios[0].sedes[sedeIndex].grados
           .map((grade) => grade.id)
           .indexOf(
-            this.gradesFromNumberToString(
+            this.parserService.gradesFromNumberToString(
               institutionWithVocations[key].grade_id,
             ),
           );
@@ -1088,12 +733,14 @@ export class DashBoardService {
               gradeIndex
             ].vocaciones.push({
               id: institutionWithVocations[key].vocational_name,
-              promedio: institutionWithVocations[key].vocational_average,
+              cantidadDeEstudiantes:
+                institutionWithVocations[key].total_students,
+              puntos: institutionWithVocations[key].vocational_average,
             });
           }
         } else {
           dataToReturn.municipios[0].sedes[sedeIndex].grados.push({
-            id: this.gradesFromNumberToString(
+            id: this.parserService.gradesFromNumberToString(
               institutionWithVocations[key].grade_id,
             ),
             asignatura: [],
@@ -1102,7 +749,9 @@ export class DashBoardService {
             vocaciones: [
               {
                 id: institutionWithVocations[key].vocational_name,
-                promedio: institutionWithVocations[key].vocational_average,
+                cantidadDeEstudiantes:
+                  institutionWithVocations[key].total_students,
+                puntos: institutionWithVocations[key].vocational_average,
               },
             ],
           });
@@ -1113,7 +762,7 @@ export class DashBoardService {
           institutcion: institutionWithVocations[key].institution_name,
           grados: [
             {
-              id: this.gradesFromNumberToString(
+              id: this.parserService.gradesFromNumberToString(
                 institutionWithVocations[key].grade_id,
               ),
               asignatura: [],
@@ -1122,7 +771,9 @@ export class DashBoardService {
               vocaciones: [
                 {
                   id: institutionWithVocations[key].vocational_name,
-                  promedio: institutionWithVocations[key].vocational_average,
+                  cantidadDeEstudiantes:
+                    institutionWithVocations[key].total_students,
+                  puntos: institutionWithVocations[key].vocational_average,
                 },
               ],
             },
@@ -1134,227 +785,34 @@ export class DashBoardService {
     return dataToReturn;
   }
 
-  async getDashboardDataByHeadquarter(id) {
+  async getDashboardDataByHeadquarter(headquarterId) {
     const dataToReturn = {
       departamento: 'Valle del Cauca',
       municipios: [],
     };
 
-    const headquarterWithAsignatures = await this.manager.query(`
-      SELECT 
-      DP.id as 'department_id',
-        DP.name as 'department_name',
-        TW.id as 'town_id',
-        TW.name as 'town_name',
-        IT.id as 'institution_id',
-        IT.name as 'institution_name',
-        HQ.id as 'headquarter_id',
-        HQ.name as 'headquarter_name',
-        GU.grade_id as 'grade_id',
-        S.id as 'subject_id',
-        S.name as 'subject_name',
-        ROUND(AVG(GUR.total_score), 2) as 'subject_average' 
-      FROM talentumehs_valle_open_location.departments DP 
-          JOIN talentumehs_valle_open_location.towns TW 
-            ON TW.department_id = DP.id 
-          JOIN talentumehs_valle_open_location.headquarters HQ 
-            ON HQ.town_id = TW.id 
-          JOIN talentumehs_valle_open_location.institutions IT
-            ON HQ.institution_id = IT.id
-          JOIN talentumehs_valle_magico.game_users GU 
-            ON GU.headquarter_id = HQ.id 
-          JOIN talentumehs_valle_magico.game_user_records GUR 
-            ON GUR.game_user_id = GU.id 
-          JOIN talentumehs_valle_magico.mini_games MG 
-            ON GUR.mini_game_id = MG.id 
-            AND GU.grade_id = MG.grade_id 
-          JOIN talentumehs_valle_magico.subject_mini_game SMG 
-            ON SMG.mini_game_id = MG.id 
-          RIGHT JOIN talentumehs_valle_magico.subjects S 
-            ON SMG.subject_id = S.id 
-      WHERE HQ.id = ${id}
-      GROUP BY (TW.id), (IT.id), (HQ.id), (GU.grade_id), (S.id)
-      ORDER BY (TW.name), (HQ.id), (GU.grade_id), (S.name)
-    `);
+    const headquarterWithAsignatures =
+      await this.queriesService.getDataWithAsignatures(
+        headquarterId,
+        FilterType.HEADQUARTER,
+      );
 
-    const headquarterWithInstelligences = await this.manager.query(`
-      SELECT 
-      DP.id as 'department_id',
-        DP.name as 'department_name',
-        TW.id as 'town_id',
-        TW.name as 'town_name',
-        IT.id as 'institution_id',
-        IT.name as 'institution_name',
-        HQ.id as 'headquarter_id',
-        HQ.name as 'headquarter_name',
-        GU.grade_id as 'grade_id',
-        I.id as 'intelligence_id',
-        I.name as 'intelligence_name',
-        ROUND(AVG(GUI.percentage_value), 2) as 'intelligence_average'
-      FROM talentumehs_valle_open_location.departments DP 
-          JOIN talentumehs_valle_open_location.towns TW 
-            ON TW.department_id = DP.id 
-          JOIN talentumehs_valle_open_location.headquarters HQ 
-            ON HQ.town_id = TW.id 
-          JOIN talentumehs_valle_open_location.institutions IT
-            ON HQ.institution_id = IT.id
-          JOIN talentumehs_valle_magico.game_users GU 
-            ON GU.headquarter_id = HQ.id 
-          JOIN talentumehs_valle_magico.game_user_records GUR 
-            ON GUR.game_user_id = GU.id 
-          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUI
-            ON GUI.game_user_record_id = GUR.id
-          RIGHT JOIN talentumehs_valle_magico.intelligence_indicators II
-            ON GUI.intelligence_indicator_id = II.id
-          RIGHT JOIN talentumehs_valle_magico.intelligences I
-            ON II.intelligence_id = I.id
-      WHERE HQ.id = ${id}
-      GROUP BY (TW.id), (IT.id), (HQ.id), (GU.grade_id), (I.id)
-      ORDER BY (TW.name), (HQ.id), (GU.grade_id), (I.name)
-    `);
+    const headquarterWithInstelligences =
+      await this.queriesService.getDataWithInstelligences(
+        headquarterId,
+        FilterType.HEADQUARTER,
+      );
 
-    const headquarterWithStyles = await this.manager.query(`
-      SELECT 
-        TSBUS.institutions_id,
-        TSBUS.institutions_name,
-        TSBUS.headquarter_id,
-        TSBUS.headquarter_name,
-        TSBUS.grade_id,
-        S.name as 'style_name',
-        ROUND(AVG(TSBUS.total_by_area/TSBU.total_by_user), 2) * 100 as 'style_average'
-        FROM (
-          SELECT
-            IT.id as 'institutions_id',
-            IT.name as 'institutions_name',
-            HQ.id as 'headquarter_id',
-            HQ.name as 'headquarter_name',
-            GU.id as 'game_user_id',
-            GU.grade_id,
-            DS.style_id as 'style',
-            COUNT(GUI.id) as 'total_by_area'
-            FROM talentumehs_valle_open_location.headquarters HQ
-            JOIN talentumehs_valle_open_location.institutions IT
-              ON HQ.institution_id = IT.id
-            JOIN talentumehs_valle_magico.game_users GU
-              ON GU.headquarter_id = HQ.id
-            JOIN talentumehs_valle_magico.game_user_records GUR
-              ON GUR.game_user_id = GU.id
-            JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUI
-              ON GUI.game_user_record_id = GUR.id
-            JOIN talentumehs_valle_magico.description_styles DS
-              ON GUI.description_style_id = DS.id
-            WHERE HQ.id = ${id}
-            GROUP BY (DS.style_id), (GU.id) 
-        ) AS TSBUS
-        JOIN (
-          SELECT
-            IT.id as 'institutions_id',
-            IT.name as 'institutions_name',
-            GU.id,
-            GU.grade_id,
-            COUNT(GUI.id) as 'total_by_user'
-            FROM talentumehs_valle_open_location.headquarters HQ
-            JOIN talentumehs_valle_open_location.institutions IT
-              ON HQ.institution_id = IT.id
-            JOIN talentumehs_valle_magico.game_users GU
-              ON GU.headquarter_id = HQ.id
-            JOIN talentumehs_valle_magico.game_user_records GUR
-              ON GUR.game_user_id = GU.id
-            JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUI
-              ON GUI.game_user_record_id = GUR.id
-            JOIN talentumehs_valle_magico.description_styles DS
-              ON GUI.description_style_id = DS.id
-            WHERE HQ.id = ${id}
-            GROUP BY (GU.id)
-        ) AS TSBU 
-          ON TSBUS.game_user_id = TSBU.id
-        JOIN talentumehs_valle_magico.styles S
-          ON TSBUS.style = S.id
-        GROUP BY (TSBUS.institutions_id), (TSBUS.headquarter_id), (TSBUS.style), (TSBUS.grade_id)
-        ORDER BY (TSBUS.institutions_id), (TSBUS.headquarter_id), (TSBUS.style)
-    `);
+    const headquarterWithStyles = await this.queriesService.getDataWithStyles(
+      headquarterId,
+      FilterType.HEADQUARTER,
+    );
 
-    const headquarterWithVocations = await this.manager.query(`
-      SELECT 
-      TOBUO.department_id as 'department_id',
-      TOBUO.department_name as 'department_name', 
-      TOBUO.town_id as 'town_id',
-      TOBUO.town_name as 'town_name',
-      TOBUO.institution_id as 'institution_id',
-      TOBUO.institution_name as 'institution_name', 
-      TOBUO.headquarter_id as 'headquarter_id',
-      TOBUO.headquarter_name as 'headquarter_name',
-      TOBUO.grade_id as 'grade_id',
-      VO.name as 'vocational_name',
-      ROUND(AVG(TOBUO.total_by_orientation/TVBU.total_by_user), 2) * 100 as 'vocational_average'
-      FROM (
-        SELECT
-          GU.grade_id as 'grade_id',
-          DP.id as 'department_id',
-          DP.name as 'department_name',
-          TW.id as 'town_id',
-          TW.name as 'town_name',
-          IT.id as 'institution_id',
-          IT.name as 'institution_name',
-          HQ.id as 'headquarter_id',
-          HQ.name as 'headquarter_name',
-          GU.id as 'game_user_id',
-          VO.id as 'vocational_orientation',
-          COUNT(GUIDS.id) as 'total_by_orientation'
-          FROM talentumehs_valle_open_location.departments DP
-          JOIN talentumehs_valle_open_location.towns TW
-            ON DP.id = TW.department_id
-          JOIN talentumehs_valle_open_location.headquarters HQ
-            ON TW.id = HQ.town_id
-          JOIN talentumehs_valle_open_location.institutions IT
-            ON HQ.institution_id = IT.id
-          JOIN talentumehs_valle_magico.game_users GU
-            ON GU.headquarter_id = HQ.id
-          JOIN talentumehs_valle_magico.game_user_records GUR
-            ON GUR.game_user_id = GU.id
-          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUIDS
-            ON GUIDS.game_user_record_id = GUR.id
-          JOIN talentumehs_valle_magico.vocationals_orientations VO
-            ON GUIDS.vocational_orientation_id = VO.id
-          WHERE HQ.id = ${id}
-          GROUP BY (VO.id), (GU.id)
-      ) as TOBUO
-      JOIN (
-        SELECT
-          DP.id as 'department_id',
-          DP.name as 'department_name',
-          TW.id as 'town_id',
-          TW.name as 'town_name',
-          IT.id as 'institution_id',
-          IT.name as 'institution_name',
-          HQ.id as 'headquarter_id',
-          HQ.name as 'headquarter_name',
-          GU.id,
-          COUNT(GUIDS.id) as 'total_by_user'
-          FROM talentumehs_valle_open_location.departments DP
-          JOIN talentumehs_valle_open_location.towns TW
-            ON DP.id = TW.department_id
-          JOIN talentumehs_valle_open_location.headquarters HQ
-            ON TW.id = HQ.town_id
-          JOIN talentumehs_valle_open_location.institutions IT
-            ON HQ.institution_id = IT.id
-          JOIN talentumehs_valle_magico.game_users GU
-            ON GU.headquarter_id = HQ.id
-          JOIN talentumehs_valle_magico.game_user_records GUR
-            ON GUR.game_user_id = GU.id
-          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUIDS
-            ON GUIDS.game_user_record_id = GUR.id
-          JOIN talentumehs_valle_magico.vocationals_orientations VO
-            ON GUIDS.vocational_orientation_id = VO.id
-          WHERE HQ.id = ${id}
-          GROUP BY (GU.id)
-      ) as TVBU
-        ON TOBUO.game_user_id = TVBU.id
-      RIGHT JOIN talentumehs_valle_magico.vocationals_orientations VO
-        ON TOBUO.vocational_orientation = VO.id
-      GROUP BY (VO.id), institution_id, headquarter_id
-      ORDER BY institution_id, headquarter_id, grade_id, (VO.name), (vocational_average)
-    `);
+    const headquarterWithVocations =
+      await this.queriesService.getDataWithVocations(
+        headquarterId,
+        FilterType.HEADQUARTER,
+      );
 
     for (const key in headquarterWithAsignatures) {
       if (dataToReturn.municipios.length === 0) {
@@ -1366,12 +824,14 @@ export class DashBoardService {
               institutcion: headquarterWithAsignatures[key].institution_name,
               grados: [
                 {
-                  id: this.gradesFromNumberToString(
+                  id: this.parserService.gradesFromNumberToString(
                     headquarterWithAsignatures[key].grade_id,
                   ),
                   asignatura: [
                     {
                       id: headquarterWithAsignatures[key].subject_name,
+                      cantidadDeEstudiantes:
+                        headquarterWithAsignatures[key].total_students,
                       promedio: headquarterWithAsignatures[key].subject_average,
                     },
                   ],
@@ -1392,7 +852,7 @@ export class DashBoardService {
           const gradeIndex = dataToReturn.municipios[0].sedes[sedeIndex].grados
             .map((grade) => grade.id)
             .indexOf(
-              this.gradesFromNumberToString(
+              this.parserService.gradesFromNumberToString(
                 headquarterWithAsignatures[key].grade_id,
               ),
             );
@@ -1402,16 +862,20 @@ export class DashBoardService {
               gradeIndex
             ].asignatura.push({
               id: headquarterWithAsignatures[key].subject_name,
+              cantidadDeEstudiantes:
+                headquarterWithAsignatures[key].total_students,
               promedio: headquarterWithAsignatures[key].subject_average,
             });
           } else {
             dataToReturn.municipios[0].sedes[sedeIndex].grados.push({
-              id: this.gradesFromNumberToString(
+              id: this.parserService.gradesFromNumberToString(
                 headquarterWithAsignatures[key].grade_id,
               ),
               asignatura: [
                 {
                   id: headquarterWithAsignatures[key].subject_name,
+                  cantidadDeEstudiantes:
+                    headquarterWithAsignatures[key].total_students,
                   promedio: headquarterWithAsignatures[key].subject_average,
                 },
               ],
@@ -1426,12 +890,14 @@ export class DashBoardService {
             institutcion: headquarterWithAsignatures[key].institution_name,
             grados: [
               {
-                id: this.gradesFromNumberToString(
+                id: this.parserService.gradesFromNumberToString(
                   headquarterWithAsignatures[key].grade_id,
                 ),
                 asignatura: [
                   {
                     id: headquarterWithAsignatures[key].subject_name,
+                    cantidadDeEstudiantes:
+                      headquarterWithAsignatures[key].total_students,
                     promedio: headquarterWithAsignatures[key].subject_average,
                   },
                 ],
@@ -1453,7 +919,7 @@ export class DashBoardService {
         const gradeIndex = dataToReturn.municipios[0].sedes[sedeIndex].grados
           .map((grade) => grade.id)
           .indexOf(
-            this.gradesFromNumberToString(
+            this.parserService.gradesFromNumberToString(
               headquarterWithInstelligences[key].grade_id,
             ),
           );
@@ -1471,19 +937,24 @@ export class DashBoardService {
               gradeIndex
             ].inteligencias.push({
               id: headquarterWithInstelligences[key].intelligence_name,
-              promedio: headquarterWithInstelligences[key].intelligence_average,
+              cantidadDeEstudiantes:
+                headquarterWithInstelligences[key].total_students,
+              indicador:
+                headquarterWithInstelligences[key].intelligence_average,
             });
           }
         } else {
           dataToReturn.municipios[0].sedes[sedeIndex].grados.push({
-            id: this.gradesFromNumberToString(
+            id: this.parserService.gradesFromNumberToString(
               headquarterWithInstelligences[key].grade_id,
             ),
             asignatura: [],
             inteligencias: [
               {
                 id: headquarterWithInstelligences[key].intelligence_name,
-                promedio:
+                cantidadDeEstudiantes:
+                  headquarterWithInstelligences[key].total_students,
+                indicador:
                   headquarterWithInstelligences[key].intelligence_average,
               },
             ],
@@ -1497,14 +968,16 @@ export class DashBoardService {
           institutcion: headquarterWithInstelligences[key].institution_name,
           grados: [
             {
-              id: this.gradesFromNumberToString(
+              id: this.parserService.gradesFromNumberToString(
                 headquarterWithInstelligences[key].grade_id,
               ),
               asignatura: [],
               inteligencias: [
                 {
                   id: headquarterWithInstelligences[key].intelligence_name,
-                  promedio:
+                  cantidadDeEstudiantes:
+                    headquarterWithInstelligences[key].total_students,
+                  indicador:
                     headquarterWithInstelligences[key].intelligence_average,
                 },
               ],
@@ -1524,7 +997,9 @@ export class DashBoardService {
         const gradeIndex = dataToReturn.municipios[0].sedes[sedeIndex].grados
           .map((grade) => grade.id)
           .indexOf(
-            this.gradesFromNumberToString(headquarterWithStyles[key].grade_id),
+            this.parserService.gradesFromNumberToString(
+              headquarterWithStyles[key].grade_id,
+            ),
           );
 
         if (gradeIndex != -1) {
@@ -1539,12 +1014,13 @@ export class DashBoardService {
               gradeIndex
             ].estilos.push({
               id: headquarterWithStyles[key].style_name,
-              promedio: headquarterWithStyles[key].style_average,
+              cantidadDeEstudiantes: headquarterWithStyles[key].total_students,
+              puntos: headquarterWithStyles[key].style_average,
             });
           }
         } else {
           dataToReturn.municipios[0].sedes[sedeIndex].grados.push({
-            id: this.gradesFromNumberToString(
+            id: this.parserService.gradesFromNumberToString(
               headquarterWithStyles[key].grade_id,
             ),
             asignatura: [],
@@ -1552,7 +1028,9 @@ export class DashBoardService {
             estilos: [
               {
                 id: headquarterWithStyles[key].style_name,
-                promedio: headquarterWithStyles[key].style_average,
+                cantidadDeEstudiantes:
+                  headquarterWithStyles[key].total_students,
+                puntos: headquarterWithStyles[key].style_average,
               },
             ],
             vocaciones: [],
@@ -1564,7 +1042,7 @@ export class DashBoardService {
           institutcion: headquarterWithStyles[key].institution_name,
           grados: [
             {
-              id: this.gradesFromNumberToString(
+              id: this.parserService.gradesFromNumberToString(
                 headquarterWithStyles[key].grade_id,
               ),
               asignatura: [],
@@ -1572,7 +1050,9 @@ export class DashBoardService {
               estilos: [
                 {
                   id: headquarterWithStyles[key].style_name,
-                  promedio: headquarterWithStyles[key].style_average,
+                  cantidadDeEstudiantes:
+                    headquarterWithStyles[key].total_students,
+                  puntos: headquarterWithStyles[key].style_average,
                 },
               ],
               vocaciones: [],
@@ -1590,7 +1070,7 @@ export class DashBoardService {
         const gradeIndex = dataToReturn.municipios[0].sedes[sedeIndex].grados
           .map((grade) => grade.id)
           .indexOf(
-            this.gradesFromNumberToString(
+            this.parserService.gradesFromNumberToString(
               headquarterWithVocations[key].grade_id,
             ),
           );
@@ -1607,12 +1087,14 @@ export class DashBoardService {
               gradeIndex
             ].vocaciones.push({
               id: headquarterWithVocations[key].vocational_name,
-              promedio: headquarterWithVocations[key].vocational_average,
+              cantidadDeEstudiantes:
+                headquarterWithVocations[key].total_students,
+              puntos: headquarterWithVocations[key].vocational_average,
             });
           }
         } else {
           dataToReturn.municipios[0].sedes[sedeIndex].grados.push({
-            id: this.gradesFromNumberToString(
+            id: this.parserService.gradesFromNumberToString(
               headquarterWithVocations[key].grade_id,
             ),
             asignatura: [],
@@ -1621,7 +1103,9 @@ export class DashBoardService {
             vocaciones: [
               {
                 id: headquarterWithVocations[key].vocational_name,
-                promedio: headquarterWithVocations[key].vocational_average,
+                cantidadDeEstudiantes:
+                  headquarterWithVocations[key].total_students,
+                puntos: headquarterWithVocations[key].vocational_average,
               },
             ],
           });
@@ -1632,7 +1116,7 @@ export class DashBoardService {
           institutcion: headquarterWithVocations[key].institution_name,
           grados: [
             {
-              id: this.gradesFromNumberToString(
+              id: this.parserService.gradesFromNumberToString(
                 headquarterWithVocations[key].grade_id,
               ),
               asignatura: [],
@@ -1641,7 +1125,9 @@ export class DashBoardService {
               vocaciones: [
                 {
                   id: headquarterWithVocations[key].vocational_name,
-                  promedio: headquarterWithVocations[key].vocational_average,
+                  cantidadDeEstudiantes:
+                    headquarterWithVocations[key].total_students,
+                  puntos: headquarterWithVocations[key].vocational_average,
                 },
               ],
             },
@@ -1653,249 +1139,47 @@ export class DashBoardService {
     return dataToReturn;
   }
 
-  async getDashboardDataByTown(id) {
+  async getDashboardDataByTown(townId) {
     const dataToReturn = {
       departamento: 'Valle del Cauca',
       municipios: [],
     };
 
-    const headquarterWithAsignatures = await this.manager.query(`
-      SELECT 
-      DP.id as 'department_id',
-        DP.name as 'department_name',
-        TW.id as 'town_id',
-        TW.name as 'town_name',
-        IT.id as 'institution_id',
-        IT.name as 'institution_name',
-        HQ.id as 'headquarter_id',
-        HQ.name as 'headquarter_name',
-        GU.grade_id as 'grade_id',
-        S.id as 'subject_id',
-        S.name as 'subject_name',
-        ROUND(AVG(GUR.total_score), 2) as 'subject_average' 
-      FROM talentumehs_valle_open_location.departments DP 
-          JOIN talentumehs_valle_open_location.towns TW 
-            ON TW.department_id = DP.id 
-          JOIN talentumehs_valle_open_location.headquarters HQ 
-            ON HQ.town_id = TW.id 
-          JOIN talentumehs_valle_open_location.institutions IT
-            ON HQ.institution_id = IT.id
-          JOIN talentumehs_valle_magico.game_users GU 
-            ON GU.headquarter_id = HQ.id 
-          JOIN talentumehs_valle_magico.game_user_records GUR 
-            ON GUR.game_user_id = GU.id 
-          JOIN talentumehs_valle_magico.mini_games MG 
-            ON GUR.mini_game_id = MG.id 
-            AND GU.grade_id = MG.grade_id 
-          JOIN talentumehs_valle_magico.subject_mini_game SMG 
-            ON SMG.mini_game_id = MG.id 
-          RIGHT JOIN talentumehs_valle_magico.subjects S 
-            ON SMG.subject_id = S.id 
-      WHERE TW.id = ${id}
-      GROUP BY (TW.id), (IT.id), (HQ.id), (GU.grade_id), (S.id)
-      ORDER BY (TW.name), (HQ.id), (GU.grade_id), (S.name)
-    `);
+    const townWithAsignatures =
+      await this.queriesService.getDataWithAsignatures(townId, FilterType.TOWN);
 
-    const headquarterWithInstelligences = await this.manager.query(`
-      SELECT 
-      DP.id as 'department_id',
-        DP.name as 'department_name',
-        TW.id as 'town_id',
-        TW.name as 'town_name',
-        IT.id as 'institution_id',
-        IT.name as 'institution_name',
-        HQ.id as 'headquarter_id',
-        HQ.name as 'headquarter_name',
-        GU.grade_id as 'grade_id',
-        I.id as 'intelligence_id',
-        I.name as 'intelligence_name',
-        ROUND(AVG(GUI.percentage_value), 2) as 'intelligence_average'
-      FROM talentumehs_valle_open_location.departments DP 
-          JOIN talentumehs_valle_open_location.towns TW 
-            ON TW.department_id = DP.id 
-          JOIN talentumehs_valle_open_location.headquarters HQ 
-            ON HQ.town_id = TW.id 
-          JOIN talentumehs_valle_open_location.institutions IT
-            ON HQ.institution_id = IT.id
-          JOIN talentumehs_valle_magico.game_users GU 
-            ON GU.headquarter_id = HQ.id 
-          JOIN talentumehs_valle_magico.game_user_records GUR 
-            ON GUR.game_user_id = GU.id 
-          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUI
-            ON GUI.game_user_record_id = GUR.id
-          RIGHT JOIN talentumehs_valle_magico.intelligence_indicators II
-            ON GUI.intelligence_indicator_id = II.id
-          RIGHT JOIN talentumehs_valle_magico.intelligences I
-            ON II.intelligence_id = I.id
-      WHERE TW.id = ${id}
-      GROUP BY (TW.id), (IT.id), (HQ.id), (GU.grade_id), (I.id)
-      ORDER BY (TW.name), (HQ.id), (GU.grade_id), (I.name)
-    `);
+    const townWithInstelligences =
+      await this.queriesService.getDataWithInstelligences(
+        townId,
+        FilterType.TOWN,
+      );
 
-    const headquarterWithStyles = await this.manager.query(`
-      SELECT 
-        TSBUS.institutions_id,
-        TSBUS.institutions_name,
-        TSBUS.headquarter_id,
-        TSBUS.headquarter_name,
-        TSBUS.grade_id,
-        S.name as 'style_name',
-        ROUND(AVG(TSBUS.total_by_area/TSBU.total_by_user), 2) * 100 as 'style_average'
-        FROM (
-          SELECT
-            IT.id as 'institutions_id',
-            IT.name as 'institutions_name',
-            HQ.id as 'headquarter_id',
-            HQ.name as 'headquarter_name',
-            GU.id as 'game_user_id',
-            GU.grade_id,
-            DS.style_id as 'style',
-            COUNT(GUI.id) as 'total_by_area'
-            FROM talentumehs_valle_open_location.towns TW
-            JOIN talentumehs_valle_open_location.headquarters HQ
-              ON TW.id = HQ.town_id
-            JOIN talentumehs_valle_open_location.institutions IT
-              ON HQ.institution_id = IT.id
-            JOIN talentumehs_valle_magico.game_users GU
-              ON GU.headquarter_id = HQ.id
-            JOIN talentumehs_valle_magico.game_user_records GUR
-              ON GUR.game_user_id = GU.id
-            JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUI
-              ON GUI.game_user_record_id = GUR.id
-            JOIN talentumehs_valle_magico.description_styles DS
-              ON GUI.description_style_id = DS.id
-            WHERE TW.id = ${id}
-            GROUP BY (DS.style_id), (GU.id) 
-        ) AS TSBUS
-        JOIN (
-          SELECT
-            IT.id as 'institutions_id',
-            IT.name as 'institutions_name',
-            GU.id,
-            GU.grade_id,
-            COUNT(GUI.id) as 'total_by_user'
-            FROM talentumehs_valle_open_location.towns TW
-            JOIN talentumehs_valle_open_location.headquarters HQ
-              ON TW.id = HQ.town_id
-            JOIN talentumehs_valle_open_location.institutions IT
-              ON HQ.institution_id = IT.id
-            JOIN talentumehs_valle_magico.game_users GU
-              ON GU.headquarter_id = HQ.id
-            JOIN talentumehs_valle_magico.game_user_records GUR
-              ON GUR.game_user_id = GU.id
-            JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUI
-              ON GUI.game_user_record_id = GUR.id
-            JOIN talentumehs_valle_magico.description_styles DS
-              ON GUI.description_style_id = DS.id
-            WHERE TW.id = ${id}
-            GROUP BY (GU.id)
-        ) AS TSBU 
-          ON TSBUS.game_user_id = TSBU.id
-        JOIN talentumehs_valle_magico.styles S
-          ON TSBUS.style = S.id
-        GROUP BY (TSBUS.institutions_id), (TSBUS.headquarter_id), (TSBUS.style), (TSBUS.grade_id)
-        ORDER BY (TSBUS.institutions_id), (TSBUS.headquarter_id), (TSBUS.style)
-    `);
+    const townWithStyles = await this.queriesService.getTownWithStyles(townId);
 
-    const townWithVocations = await this.manager.query(`
-      SELECT 
-      TOBUO.department_id as 'department_id',
-      TOBUO.department_name as 'department_name', 
-      TOBUO.town_id as 'town_id',
-      TOBUO.town_name as 'town_name',
-      TOBUO.institution_id as 'institution_id',
-      TOBUO.institution_name as 'institution_name', 
-      TOBUO.headquarter_id as 'headquarter_id',
-      TOBUO.headquarter_name as 'headquarter_name',
-      TOBUO.grade_id as 'grade_id',
-      VO.name as 'vocational_name',
-      ROUND(AVG(TOBUO.total_by_orientation/TVBU.total_by_user), 2) * 100 as 'vocational_average'
-      FROM (
-        SELECT
-          GU.grade_id as 'grade_id',
-          DP.id as 'department_id',
-          DP.name as 'department_name',
-          TW.id as 'town_id',
-          TW.name as 'town_name',
-          IT.id as 'institution_id',
-          IT.name as 'institution_name',
-          HQ.id as 'headquarter_id',
-          HQ.name as 'headquarter_name',
-          GU.id as 'game_user_id',
-          VO.id as 'vocational_orientation',
-          COUNT(GUIDS.id) as 'total_by_orientation'
-          FROM talentumehs_valle_open_location.departments DP
-          JOIN talentumehs_valle_open_location.towns TW
-            ON DP.id = TW.department_id
-          JOIN talentumehs_valle_open_location.headquarters HQ
-            ON TW.id = HQ.town_id
-          JOIN talentumehs_valle_open_location.institutions IT
-            ON HQ.institution_id = IT.id
-          JOIN talentumehs_valle_magico.game_users GU
-            ON GU.headquarter_id = HQ.id
-          JOIN talentumehs_valle_magico.game_user_records GUR
-            ON GUR.game_user_id = GU.id
-          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUIDS
-            ON GUIDS.game_user_record_id = GUR.id
-          JOIN talentumehs_valle_magico.vocationals_orientations VO
-            ON GUIDS.vocational_orientation_id = VO.id
-          WHERE TW.id = ${id}
-          GROUP BY (VO.id), (GU.id)
-      ) as TOBUO
-      JOIN (
-        SELECT
-          DP.id as 'department_id',
-          DP.name as 'department_name',
-          TW.id as 'town_id',
-          TW.name as 'town_name',
-          IT.id as 'institution_id',
-          IT.name as 'institution_name',
-          HQ.id as 'headquarter_id',
-          HQ.name as 'headquarter_name',
-          GU.id,
-          COUNT(GUIDS.id) as 'total_by_user'
-          FROM talentumehs_valle_open_location.departments DP
-          JOIN talentumehs_valle_open_location.towns TW
-            ON DP.id = TW.department_id
-          JOIN talentumehs_valle_open_location.headquarters HQ
-            ON TW.id = HQ.town_id
-          JOIN talentumehs_valle_open_location.institutions IT
-            ON HQ.institution_id = IT.id
-          JOIN talentumehs_valle_magico.game_users GU
-            ON GU.headquarter_id = HQ.id
-          JOIN talentumehs_valle_magico.game_user_records GUR
-            ON GUR.game_user_id = GU.id
-          JOIN talentumehs_valle_magico.gu_record_intelligence_ind_desc_styles GUIDS
-            ON GUIDS.game_user_record_id = GUR.id
-          JOIN talentumehs_valle_magico.vocationals_orientations VO
-            ON GUIDS.vocational_orientation_id = VO.id
-          WHERE TW.id = ${id}
-          GROUP BY (GU.id)
-      ) as TVBU
-        ON TOBUO.game_user_id = TVBU.id
-      RIGHT JOIN talentumehs_valle_magico.vocationals_orientations VO
-        ON TOBUO.vocational_orientation = VO.id
-      GROUP BY (VO.id), institution_id, headquarter_id
-      ORDER BY institution_id, headquarter_id, grade_id, (VO.name), (vocational_average)
-    `);
+    const townWithVocations = await this.queriesService.getDataWithVocations(
+      townId,
+      FilterType.TOWN,
+    );
 
-    for (const key in headquarterWithAsignatures) {
+    for (const key in townWithAsignatures) {
       if (dataToReturn.municipios.length === 0) {
         dataToReturn.municipios.push({
-          id: headquarterWithAsignatures[key].town_name,
+          id: townWithAsignatures[key].town_name,
           sedes: [
             {
-              id: headquarterWithAsignatures[key].headquarter_name,
-              institutcion: headquarterWithAsignatures[key].institution_name,
+              id: townWithAsignatures[key].headquarter_name,
+              institutcion: townWithAsignatures[key].institution_name,
               grados: [
                 {
-                  id: this.gradesFromNumberToString(
-                    headquarterWithAsignatures[key].grade_id,
+                  id: this.parserService.gradesFromNumberToString(
+                    townWithAsignatures[key].grade_id,
                   ),
                   asignatura: [
                     {
-                      id: headquarterWithAsignatures[key].subject_name,
-                      promedio: headquarterWithAsignatures[key].subject_average,
+                      id: townWithAsignatures[key].subject_name,
+                      cantidadDeEstudiantes:
+                        townWithAsignatures[key].total_students,
+                      promedio: townWithAsignatures[key].subject_average,
                     },
                   ],
                   inteligencias: [],
@@ -1909,14 +1193,14 @@ export class DashBoardService {
       } else {
         const sedeIndex = dataToReturn.municipios[0].sedes
           .map((sede) => sede.id)
-          .indexOf(headquarterWithAsignatures[key].headquarter_name);
+          .indexOf(townWithAsignatures[key].headquarter_name);
 
         if (sedeIndex != -1) {
           const gradeIndex = dataToReturn.municipios[0].sedes[sedeIndex].grados
             .map((grade) => grade.id)
             .indexOf(
-              this.gradesFromNumberToString(
-                headquarterWithAsignatures[key].grade_id,
+              this.parserService.gradesFromNumberToString(
+                townWithAsignatures[key].grade_id,
               ),
             );
 
@@ -1924,18 +1208,21 @@ export class DashBoardService {
             dataToReturn.municipios[0].sedes[sedeIndex].grados[
               gradeIndex
             ].asignatura.push({
-              id: headquarterWithAsignatures[key].subject_name,
-              promedio: headquarterWithAsignatures[key].subject_average,
+              id: townWithAsignatures[key].subject_name,
+              cantidadDeEstudiantes: townWithAsignatures[key].total_students,
+              promedio: townWithAsignatures[key].subject_average,
             });
           } else {
             dataToReturn.municipios[0].sedes[sedeIndex].grados.push({
-              id: this.gradesFromNumberToString(
-                headquarterWithAsignatures[key].grade_id,
+              id: this.parserService.gradesFromNumberToString(
+                townWithAsignatures[key].grade_id,
               ),
               asignatura: [
                 {
-                  id: headquarterWithAsignatures[key].subject_name,
-                  promedio: headquarterWithAsignatures[key].subject_average,
+                  id: townWithAsignatures[key].subject_name,
+                  cantidadDeEstudiantes:
+                    townWithAsignatures[key].total_students,
+                  promedio: townWithAsignatures[key].subject_average,
                 },
               ],
               inteligencias: [],
@@ -1945,17 +1232,19 @@ export class DashBoardService {
           }
         } else {
           dataToReturn.municipios[0].sedes.push({
-            id: headquarterWithAsignatures[key].headquarter_name,
-            institutcion: headquarterWithAsignatures[key].institution_name,
+            id: townWithAsignatures[key].headquarter_name,
+            institutcion: townWithAsignatures[key].institution_name,
             grados: [
               {
-                id: this.gradesFromNumberToString(
-                  headquarterWithAsignatures[key].grade_id,
+                id: this.parserService.gradesFromNumberToString(
+                  townWithAsignatures[key].grade_id,
                 ),
                 asignatura: [
                   {
-                    id: headquarterWithAsignatures[key].subject_name,
-                    promedio: headquarterWithAsignatures[key].subject_average,
+                    id: townWithAsignatures[key].subject_name,
+                    cantidadDeEstudiantes:
+                      townWithAsignatures[key].total_students,
+                    promedio: townWithAsignatures[key].subject_average,
                   },
                 ],
                 inteligencias: [],
@@ -1968,16 +1257,16 @@ export class DashBoardService {
       }
     }
 
-    for (const key in headquarterWithInstelligences) {
+    for (const key in townWithInstelligences) {
       const sedeIndex = dataToReturn.municipios[0].sedes
         .map((sede) => sede.id)
-        .indexOf(headquarterWithInstelligences[key].headquarter_name);
+        .indexOf(townWithInstelligences[key].headquarter_name);
       if (sedeIndex != -1) {
         const gradeIndex = dataToReturn.municipios[0].sedes[sedeIndex].grados
           .map((grade) => grade.id)
           .indexOf(
-            this.gradesFromNumberToString(
-              headquarterWithInstelligences[key].grade_id,
+            this.parserService.gradesFromNumberToString(
+              townWithInstelligences[key].grade_id,
             ),
           );
 
@@ -1987,27 +1276,28 @@ export class DashBoardService {
               gradeIndex
             ].inteligencias
               .map((inteligencia) => inteligencia.id)
-              .indexOf(headquarterWithInstelligences[key].intelligence_name) ==
-            -1;
+              .indexOf(townWithInstelligences[key].intelligence_name) == -1;
           if (notIntelligenceFound) {
             dataToReturn.municipios[0].sedes[sedeIndex].grados[
               gradeIndex
             ].inteligencias.push({
-              id: headquarterWithInstelligences[key].intelligence_name,
-              promedio: headquarterWithInstelligences[key].intelligence_average,
+              id: townWithInstelligences[key].intelligence_name,
+              cantidadDeEstudiantes: townWithInstelligences[key].total_students,
+              indicador: townWithInstelligences[key].intelligence_average,
             });
           }
         } else {
           dataToReturn.municipios[0].sedes[sedeIndex].grados.push({
-            id: this.gradesFromNumberToString(
-              headquarterWithInstelligences[key].grade_id,
+            id: this.parserService.gradesFromNumberToString(
+              townWithInstelligences[key].grade_id,
             ),
             asignatura: [],
             inteligencias: [
               {
-                id: headquarterWithInstelligences[key].intelligence_name,
-                promedio:
-                  headquarterWithInstelligences[key].intelligence_average,
+                id: townWithInstelligences[key].intelligence_name,
+                cantidadDeEstudiantes:
+                  townWithInstelligences[key].total_students,
+                indicador: townWithInstelligences[key].intelligence_average,
               },
             ],
             estilos: [],
@@ -2016,19 +1306,20 @@ export class DashBoardService {
         }
       } else {
         dataToReturn.municipios[0].sedes.push({
-          id: headquarterWithInstelligences[key].headquarter_name,
-          institutcion: headquarterWithInstelligences[key].institution_name,
+          id: townWithInstelligences[key].headquarter_name,
+          institutcion: townWithInstelligences[key].institution_name,
           grados: [
             {
-              id: this.gradesFromNumberToString(
-                headquarterWithInstelligences[key].grade_id,
+              id: this.parserService.gradesFromNumberToString(
+                townWithInstelligences[key].grade_id,
               ),
               asignatura: [],
               inteligencias: [
                 {
-                  id: headquarterWithInstelligences[key].intelligence_name,
-                  promedio:
-                    headquarterWithInstelligences[key].intelligence_average,
+                  id: townWithInstelligences[key].intelligence_name,
+                  cantidadDeEstudiantes:
+                    townWithInstelligences[key].total_students,
+                  indicador: townWithInstelligences[key].intelligence_average,
                 },
               ],
               estilos: [],
@@ -2039,15 +1330,17 @@ export class DashBoardService {
       }
     }
 
-    for (const key in headquarterWithStyles) {
+    for (const key in townWithStyles) {
       const sedeIndex = dataToReturn.municipios[0].sedes
         .map((sede) => sede.id)
-        .indexOf(headquarterWithStyles[key].headquarter_name);
+        .indexOf(townWithStyles[key].headquarter_name);
       if (sedeIndex != -1) {
         const gradeIndex = dataToReturn.municipios[0].sedes[sedeIndex].grados
           .map((grade) => grade.id)
           .indexOf(
-            this.gradesFromNumberToString(headquarterWithStyles[key].grade_id),
+            this.parserService.gradesFromNumberToString(
+              townWithStyles[key].grade_id,
+            ),
           );
 
         if (gradeIndex != -1) {
@@ -2056,26 +1349,28 @@ export class DashBoardService {
               gradeIndex
             ].estilos
               .map((inteligencia) => inteligencia.id)
-              .indexOf(headquarterWithStyles[key].style_name) == -1;
+              .indexOf(townWithStyles[key].style_name) == -1;
           if (notStyleFound) {
             dataToReturn.municipios[0].sedes[sedeIndex].grados[
               gradeIndex
             ].estilos.push({
-              id: headquarterWithStyles[key].style_name,
-              promedio: headquarterWithStyles[key].style_average,
+              id: townWithStyles[key].style_name,
+              cantidadDeEstudiantes: townWithStyles[key].total_students,
+              puntos: townWithStyles[key].style_average,
             });
           }
         } else {
           dataToReturn.municipios[0].sedes[sedeIndex].grados.push({
-            id: this.gradesFromNumberToString(
-              headquarterWithStyles[key].grade_id,
+            id: this.parserService.gradesFromNumberToString(
+              townWithStyles[key].grade_id,
             ),
             asignatura: [],
             inteligencias: [],
             estilos: [
               {
-                id: headquarterWithStyles[key].style_name,
-                promedio: headquarterWithStyles[key].style_average,
+                id: townWithStyles[key].style_name,
+                cantidadDeEstudiantes: townWithStyles[key].total_students,
+                puntos: townWithStyles[key].style_average,
               },
             ],
             vocaciones: [],
@@ -2083,19 +1378,20 @@ export class DashBoardService {
         }
       } else {
         dataToReturn.municipios[0].sedes.push({
-          id: headquarterWithStyles[key].headquarter_name,
-          institutcion: headquarterWithStyles[key].institution_name,
+          id: townWithStyles[key].headquarter_name,
+          institutcion: townWithStyles[key].institution_name,
           grados: [
             {
-              id: this.gradesFromNumberToString(
-                headquarterWithStyles[key].grade_id,
+              id: this.parserService.gradesFromNumberToString(
+                townWithStyles[key].grade_id,
               ),
               asignatura: [],
               inteligencias: [],
               estilos: [
                 {
-                  id: headquarterWithStyles[key].style_name,
-                  promedio: headquarterWithStyles[key].style_average,
+                  id: townWithStyles[key].style_name,
+                  cantidadDeEstudiantes: townWithStyles[key].total_students,
+                  puntos: townWithStyles[key].style_average,
                 },
               ],
               vocaciones: [],
@@ -2113,7 +1409,9 @@ export class DashBoardService {
         const gradeIndex = dataToReturn.municipios[0].sedes[sedeIndex].grados
           .map((grade) => grade.id)
           .indexOf(
-            this.gradesFromNumberToString(townWithVocations[key].grade_id),
+            this.parserService.gradesFromNumberToString(
+              townWithVocations[key].grade_id,
+            ),
           );
 
         if (gradeIndex != -1) {
@@ -2128,19 +1426,23 @@ export class DashBoardService {
               gradeIndex
             ].vocaciones.push({
               id: townWithVocations[key].vocational_name,
-              promedio: townWithVocations[key].vocational_average,
+              cantidadDeEstudiantes: townWithVocations[key].total_students,
+              puntos: townWithVocations[key].vocational_average,
             });
           }
         } else {
           dataToReturn.municipios[0].sedes[sedeIndex].grados.push({
-            id: this.gradesFromNumberToString(townWithVocations[key].grade_id),
+            id: this.parserService.gradesFromNumberToString(
+              townWithVocations[key].grade_id,
+            ),
             asignatura: [],
             inteligencias: [],
             estilos: [],
             vocaciones: [
               {
                 id: townWithVocations[key].vocational_name,
-                promedio: townWithVocations[key].vocational_average,
+                cantidadDeEstudiantes: townWithVocations[key].total_students,
+                puntos: townWithVocations[key].vocational_average,
               },
             ],
           });
@@ -2151,7 +1453,7 @@ export class DashBoardService {
           institutcion: townWithVocations[key].institution_name,
           grados: [
             {
-              id: this.gradesFromNumberToString(
+              id: this.parserService.gradesFromNumberToString(
                 townWithVocations[key].grade_id,
               ),
               asignatura: [],
@@ -2160,7 +1462,8 @@ export class DashBoardService {
               vocaciones: [
                 {
                   id: townWithVocations[key].vocational_name,
-                  promedio: townWithVocations[key].vocational_average,
+                  cantidadDeEstudiantes: townWithVocations[key].total_students,
+                  puntos: townWithVocations[key].vocational_average,
                 },
               ],
             },
@@ -2170,46 +1473,5 @@ export class DashBoardService {
     }
 
     return dataToReturn;
-  }
-
-  gradesFromNumberToString(grade) {
-    switch (grade) {
-      case 0:
-        return 'Trancisión';
-      case 1:
-        return 'Primero';
-      case 2:
-        return 'Segundo';
-      case 3:
-        return 'Tercero';
-      case 4:
-        return 'Cuarto';
-      case 5:
-        return 'Quinto';
-      case 6:
-        return 'Sexto';
-      case 7:
-        return 'Septimo';
-      case 8:
-        return 'Octavo';
-      case 9:
-        return 'Noveno';
-      case 10:
-        return 'Decimo';
-      case 11:
-        return 'Once';
-      case 12:
-        return 'Trancisión primero';
-      case 13:
-        return 'Segundo tercero';
-      case 14:
-        return 'Cuarto quinto';
-      case 15:
-        return 'Sexto septimo';
-      case 16:
-        return 'Octavo noveno';
-      case 17:
-        return 'Decimo once';
-    }
   }
 }

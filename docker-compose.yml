@@ -1,0 +1,50 @@
+version: "3.9"
+services:
+#   api:
+#     build:
+#       dockerfile: Dockerfile
+#       context: .
+#     depends_on: 
+#       - db
+#     environment:
+#       - DB_HOST
+#       - DB_PORT
+#       - DB_USERNAME
+#       - DB_PASSWORD
+#       - DB_ONE_NAME
+#       - DB_TWO_NAME
+#     ports:
+#       - "8080:3000"
+#     networks:
+#       - valle-magico-network
+  db:
+    platform: linux/x86_64
+    image: mysql:8.0
+    container_name: valle-magico-db
+    volumes:
+      - ./docker-db-one/talentumehs_valle_magico.sql:/docker-entrypoint-initdb.d/init.sql
+    #   - ./docker-db-two/talentumehs_valle_magico.sql:/docker-entrypoint-two-initdb.d/init.sql
+    environment:
+      MYSQL_ROOT_PASSWORD: "${DB_ROOT_PASSWORD}"
+      # MYSQL_USER: "${DB_USERNAME}"
+      # MYSQL_PASSWORD:  "${DB_PASSWORD}"
+      # MYSQL_DATABASE: "${DB_ONE_NAME}"
+    ports:
+      - "3500:3306"
+    networks:
+      - valle-magico-network
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: nest-myadmin
+    networks:
+      - valle-magico-network
+    depends_on:
+      - db
+    restart: always
+    ports:
+      - "8080:80"
+    volumes:
+      - "/sessions"
+networks:
+  valle-magico-network:
+    driver: bridge
