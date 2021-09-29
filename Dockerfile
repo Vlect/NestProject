@@ -1,7 +1,7 @@
 FROM node:14.17.1
 
 # Create app directory, this is our container/in our image
-WORKDIR /valle-magico/src/app
+WORKDIR /app
 
 # Install app dependencies
 # A wildcard is used to ensure both package.json AND package-lock.json are copied
@@ -21,8 +21,7 @@ ENV DB_USERNAME=user
 ENV DB_PASSWORD=password
 ENV DB_ONE_NAME=db_one_name
 ENV DB_TWO_NAME=db_two_name
+ENV DB_ROOT_PASSWORD=db_two_name
 
-RUN npm run build
-
-EXPOSE 8080
-CMD [ "node", "dist/main" ]
+EXPOSE 3000
+CMD [ "npm", "start" ]
